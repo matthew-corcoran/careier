@@ -1,0 +1,15 @@
+.venv/
+__pycache__/
+*.py[cod]
+.DS_Store
+
+# Downloaded ML weights and model caches
+*.pt
+models/
+
+# Generated preview frames
+demo_*.jpg
+
+# Local recordings
+recordings/
+*.mov
