@@ -38,12 +38,38 @@ function onChunk(msg, receivedAt) {
   stats.cameraAt = receivedAt;
 }
 
+// Backup calibration. If the sensor hasn't calibrated itself (trunk_flexion is null), work out the
+// tilt here from its raw accelerometer: the first still sample becomes "upright". POST /recalibrate
+// (the dashboard's Recalibrate button) takes the current posture as the new upright.
+let fieldIdx = Object.fromEntries(["ax","ay","az","gx","gy","gz","qw","qx","qy","qz","trunk_flexion","lumbar_flexion","side_bend","twist","strain"].map((f, i) => [f, i]));
+let upright = null, wantRecal = false;
+const unit = (v) => { const n = Math.hypot(...v) || 1; return v.map((x) => x / n); };
+function fillTilt(msg) {
+  const i = fieldIdx;
+  if (i.trunk_flexion == null || i.ax == null) return;
+  let filled = false;
+  for (const row of msg.upper) {
+    const acc = [row[i.ax], row[i.ay], row[i.az]];
+    if (acc.some((v) => typeof v !== "number")) continue;
+    const g = unit(acc);
+    const gyro = i.gx == null ? 0 : Math.hypot(row[i.gx] || 0, row[i.gy] || 0, row[i.gz] || 0);
+    if (wantRecal || (!upright && gyro < 8)) { upright = g; wantRecal = false; }
+    if (row[i.trunk_flexion] != null || !upright) continue;
+    const cos = Math.max(-1, Math.min(1, g[0] * upright[0] + g[1] * upright[1] + g[2] * upright[2]));
+    row[i.trunk_flexion] = Math.round((Math.acos(cos) * 180) / Math.PI * 10) / 10;
+    filled = true;
+  }
+  if (filled) msg.calibrated_by = "hub";
+}
+
 const udp = dgram.createSocket("udp4");
 udp.on("message", (buf, rinfo) => {
   const receivedAt = Date.now();
   let msg;
   try { msg = JSON.parse(buf.toString("utf8")); } catch { stats.bad++; return; }
   if (msg.type === "camera_chunk") return onChunk(msg, receivedAt); // video frames: reassemble, don't log
+  if (msg.type === "hello" && Array.isArray(msg.fields)) fieldIdx = Object.fromEntries(msg.fields.map((f, i) => [f, i]));
+  if (msg.type === "frames" && Array.isArray(msg.upper)) fillTilt(msg);
   const rec = { ...msg, hub_ms: receivedAt };
   log.write(JSON.stringify(rec) + "\n");
   broadcast(rec);
@@ -90,6 +116,11 @@ async function serveSite(req, res) {
 }
 
 createServer(async (req, res) => {
+  if (req.method === "POST" && req.url === "/recalibrate") {
+    wantRecal = true;
+    res.writeHead(204);
+    return res.end();
+  }
   if (req.url === "/events") {
     res.writeHead(200, { "content-type": "text/event-stream", "cache-control": "no-cache", connection: "keep-alive" });
     res.write(": connected\n\n");

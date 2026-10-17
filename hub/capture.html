@@ -142,6 +142,7 @@ button:focus-visible, summary:focus-visible { outline: 2px solid var(--accent); 
       <span class="chip" id="cCam">Camera coach</span>
       <span class="chip" id="cCal">Not calibrated</span>
       <span class="chip" id="cRate">0 Hz</span>
+      <button class="btn ghost" id="btnRecal" type="button" title="Stand upright and still, then press">Recalibrate</button>
     </div>
   </header>
 
@@ -294,7 +295,7 @@ function onFrames(m, t) {
     const twist = get("twist");
     addFrame({ t: t - (lastOff - offs[i]), flex, twist, strain: get("strain") ?? strainOf(flex, twist) });
   });
-  if (m.calibrated === true) setCal(true);
+  setCal(m.calibrated === true ? true : m.calibrated_by === "hub" ? "hub" : false);
   lastFrame = { ...m, upper: [m.upper.at(-1)], note: `${m.upper.length} samples in this packet` };
   showRaw();
 }
@@ -361,7 +362,11 @@ function updateSensor(f) {
   $("tiltSub").textContent = `Twist ${f.twist == null ? "–" : Math.round(f.twist) + "°"} · strain ${f.strain ?? "–"}`;
 }
 
-function setCal(on) { const p = $("cCal"); p.textContent = on ? "Calibrated" : "Not calibrated"; p.className = "chip " + (on ? "on" : ""); }
+function setCal(on) {
+  const p = $("cCal");
+  p.textContent = on === "hub" ? "Calibrated by hub" : on ? "Calibrated" : "Not calibrated";
+  p.className = "chip " + (on === "hub" ? "warn" : on ? "on" : "");
+}
 
 function onStats(s) {
   const now = Date.now();
@@ -470,6 +475,7 @@ else {
 // (box, then a head-drop lift, then a supported lift) and generates matching vest and camera data.
 function startReplay() {
   $("cHub").textContent = "Replay";
+  $("btnRecal").hidden = true;
   $("cHub").className = "chip warn";
   const vid = document.createElement("video");
   Object.assign(vid, { src: "media/demo.mp4", muted: true, loop: true, playsInline: true, autoplay: true });
@@ -527,6 +533,11 @@ $("btnCopy").onclick = async () => {
   try { await navigator.clipboard.writeText(text); b.textContent = "Copied"; }
   catch { $("raw").textContent = text; document.querySelector("details").open = true; b.textContent = "Shown below"; }
   setTimeout(() => (b.textContent = "Copy lift for Care-ER"), 1500);
+};
+$("btnRecal").onclick = async (e) => {
+  const b = e.currentTarget;
+  try { await fetch("/recalibrate", { method: "POST" }); b.textContent = "Upright set"; } catch { b.textContent = "Hub not reachable"; }
+  setTimeout(() => (b.textContent = "Recalibrate"), 1500);
 };
 $("btnClear").onclick = () => { lifts.length = 0; alerts.length = 0; spans.length = 0; selected = null; renderLifts(); };
 </script>
