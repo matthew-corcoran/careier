@@ -44,9 +44,11 @@ TABLE_C = [
     [12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12],
 ]
 
-# Patient-handling defaults (no force plate, no handles on a person).
-LOAD_SCORE = 2
-COUPLING_SCORE = 2
+# Camera demo defaults. A real REBA assessment would add more for patient
+# weight and an awkward grip, but those two flat penalties made a careful
+# kneel look the same as a stoop. One point keeps a person harder than a box.
+LOAD_SCORE = 1
+COUPLING_SCORE = 1
 DEFAULT_WRIST_SCORE = 2
 
 RISK_BANDS = (
@@ -130,7 +132,8 @@ def trunk_score(flex_deg: float, twist_deg: float, side_deg: float) -> int:
         base = 3
     else:
         base = 4
-    if abs(twist_deg) >= 15 or abs(side_deg) >= 15:
+    # 2D pose reports small twist and side bend on almost every lean.
+    if abs(twist_deg) >= 25 or abs(side_deg) >= 25:
         base += 1
     return clamp(base, 1, 5)
 
@@ -147,22 +150,25 @@ def neck_score(flex_deg: float, twisted: bool) -> int:
 
 
 def legs_score(knee_flex_deg: float, unstable_base: bool) -> int:
+    # A deep kneel is the safe way to get someone off the floor. Textbook REBA
+    # adds two points past 60°, and the camera then saturates a tucked shin
+    # near 180°. Count a partial squat, not a supported kneel.
     base = 2 if unstable_base else 1
     knee = abs(knee_flex_deg)
-    if knee > 60:
-        base += 2
-    elif knee >= 28:
+    if 30 <= knee <= 110:
         base += 1
     return clamp(base, 1, 4)
 
 
 def upper_arm_score(elev_deg: float, abducted: bool) -> int:
     elev = abs(elev_deg)
-    if elev <= 20:
+    # Shifted up from the paper's 20/45/90 bins. A side camera overstates
+    # how high the arm is while the carer reaches around someone.
+    if elev <= 30:
         base = 1
-    elif elev <= 45:
+    elif elev <= 60:
         base = 2
-    elif elev <= 90:
+    elif elev <= 100:
         base = 3
     else:
         base = 4

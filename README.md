@@ -73,6 +73,14 @@ Keys:
 - `R` reset peak
 - `Q` quit
 
+Recorded clip:
+
+```bash
+python coach.py --video floor-transfer.mp4
+```
+
+The person lower in the frame is the patient. `SPACE` pauses. `,` and `.` jump one second. `0` restarts. `S` swaps carer and patient.
+
 Backup clip without a webcam:
 
 ```bash

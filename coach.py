@@ -14,6 +14,7 @@ from pathlib import Path
 import cv2
 import mediapipe as mp
 import numpy as np
+from PIL import Image, ImageDraw, ImageFont
 from mediapipe.tasks.python import BaseOptions
 from mediapipe.tasks.python.vision import (
     PoseLandmarker,
@@ -76,12 +77,19 @@ MODEL_URL = (
 )
 YOLO_MODEL_PATH = ROOT / "yolo26s-pose.pt"
 
-GREEN = (70, 190, 80)
-AMBER = (40, 185, 255)
-RED = (50, 50, 230)
+INK = (32, 32, 30)
+PAPER = (236, 236, 234)
+CARD = (252, 252, 250)
+MUTED = (130, 128, 122)
+HAIRLINE = (214, 214, 210)
+BLUE = (255, 107, 47)
+GREEN = (96, 168, 52)
+AMBER = (32, 148, 214)
+RED = (68, 68, 214)
 WHITE = (255, 255, 255)
-BLACK = (0, 0, 0)
-WINDOW_TITLE = "Careier — Live Lift Coach"
+BLACK = INK
+WINDOW_TITLE = "careier."
+STAGE_W, STAGE_H = 1280, 760
 
 
 def _xyz(lm) -> np.ndarray:
@@ -137,6 +145,12 @@ class AngleFilter:
             self._smooth = _ema(self._smooth, self._raw, EMA)
         self._trunk_hist.append((now, self._smooth.trunk_flex_deg))
         return self._smooth
+
+    def reset(self) -> None:
+        self._raw = None
+        self._smooth = None
+        self._prev_trunk = 0.0
+        self._trunk_hist.clear()
 
     def activity(self, now: float) -> int:
         if len(self._trunk_hist) < 4:
@@ -252,8 +266,9 @@ def angles_from_pose(landmarks) -> tuple[RebaAngles | None, bool]:
     vertical = np.array([0.0, -1.0, 0.0])
 
     trunk_flex = angle_between(trunk, vertical)
-    side_plane = np.array([trunk[0], trunk[1], 0.0])
-    trunk_side = angle_between(side_plane, np.array([0.0, -1.0, 0.0])) if np.linalg.norm(side_plane) > 1e-6 else 0.0
+    # Image landmarks have no depth, so this "side" angle is the same lean
+    # already counted as trunk flexion. Leave it at 0 instead of double scoring.
+    trunk_side = 0.0
 
     sh_line = np.array([r_sh[0] - l_sh[0], r_sh[1] - l_sh[1]])
     hip_line = np.array([r_hip[0] - l_hip[0], r_hip[1] - l_hip[1]])
@@ -265,7 +280,7 @@ def angles_from_pose(landmarks) -> tuple[RebaAngles | None, bool]:
     neck_vec = nose - mid_sh
     neck_vs_up = angle_between(neck_vec, vertical)
     neck_flex = neck_vs_up - trunk_flex * 0.35
-    neck_twist = trunk_twist >= 18
+    neck_twist = trunk_twist >= 25
 
     knees: list[float] = []
     for side in ("l", "r"):
@@ -275,7 +290,8 @@ def angles_from_pose(landmarks) -> tuple[RebaAngles | None, bool]:
             an = _xyz(landmarks[LM[f"{side}_an"]])
             knees.append(180.0 - joint_angle(hip, kn, an))
     knee_flex = max(knees) if knees else 10.0
-    unstable = len(knees) == 2 and abs(knees[0] - knees[1]) > 25
+    # One knee down and one up is a half-kneel, not an unstable base.
+    unstable = False
 
     arm_elevs: list[float] = []
     elbow_angs: list[float] = []
@@ -288,7 +304,7 @@ def angles_from_pose(landmarks) -> tuple[RebaAngles | None, bool]:
         upper = el - sh
         arm_elevs.append(angle_between(upper, -trunk))
         lateral = abs(upper[0])
-        if lateral > 0.55 * (np.linalg.norm(upper) + 1e-8):
+        if lateral > 0.82 * (np.linalg.norm(upper) + 1e-8):
             abducted = True
         if _vis(landmarks, f"{side}_wr") >= VIS_MIN:
             wr = _xyz(landmarks[LM[f"{side}_wr"]])
@@ -314,8 +330,8 @@ def angles_from_pose(landmarks) -> tuple[RebaAngles | None, bool]:
     )
 
 
-CARER_COLOR = (255, 220, 80)
-PATIENT_COLOR = (180, 120, 255)
+CARER_COLOR = BLUE
+PATIENT_COLOR = (42, 42, 40)
 
 
 def _pt(landmarks, name: str, w: int, h: int) -> tuple[int, int]:
@@ -600,15 +616,52 @@ class FeedbackSmoother:
         self.trunk_missing = 0
 
 
-class RoleTracker:
-    """Assign detections to stable roles using previous box centres."""
+def _floor_score(person: dict) -> tuple[float, float]:
+    """Higher means more like the person on the floor: lower hips, wider body."""
+    box = person.get("box") or (0.0, 0.0, 1.0, 1.0)
+    width = max(1.0, float(box[2]) - float(box[0]))
+    height = max(1.0, float(box[3]) - float(box[1]))
+    return (float(person.get("hip_y", 0.5)), width / height)
 
-    def __init__(self) -> None:
+
+class RoleTracker:
+    """Assign detections to stable roles.
+
+    Live camera keeps the demo layout: carer starts on the left.
+    A floor-transfer video uses body height instead, because the patient
+    is the person lying or sitting lower in the frame.
+    """
+
+    def __init__(self, mode: str = "sides") -> None:
+        self.mode = mode
         self.carer_on_left = True
         self.carer_x: float | None = None
         self.patient_x: float | None = None
+        self.carer_y: float | None = None
+        self.patient_y: float | None = None
         self.carer_id: int | None = None
         self.patient_id: int | None = None
+
+    def _remember(self, carer: dict | None, patient: dict | None) -> None:
+        if carer is not None:
+            self.carer_x = carer["center_x"]
+            self.carer_y = float(carer.get("hip_y", 0.5))
+            self.carer_id = carer.get("track_id")
+        if patient is not None:
+            self.patient_x = patient["center_x"]
+            self.patient_y = float(patient.get("hip_y", 0.5))
+            self.patient_id = patient.get("track_id")
+
+    def _match_remaining(self, remaining: list[dict], role: str) -> dict:
+        if self.mode == "floor":
+            target = self.patient_y if role == "patient" else self.carer_y
+            if target is None:
+                target = 0.7 if role == "patient" else 0.4
+            return min(remaining, key=lambda person: abs(float(person.get("hip_y", 0.5)) - target))
+        target = self.patient_x if role == "patient" else self.carer_x
+        if target is None:
+            target = 0.75 if role == "patient" else 0.25
+        return min(remaining, key=lambda person: abs(person["center_x"] - target))
 
     def split(self, people: list[dict]) -> tuple[dict | None, dict | None]:
         if not people:
@@ -630,35 +683,27 @@ class RoleTracker:
                 person for person in people if person.get("track_id") not in used_ids
             ]
             if tracked_carer is None and remaining:
-                target = self.carer_x if self.carer_x is not None else 0.25
-                tracked_carer = min(
-                    remaining,
-                    key=lambda person: abs(person["center_x"] - target),
-                )
-                self.carer_id = tracked_carer.get("track_id")
+                tracked_carer = self._match_remaining(remaining, "carer")
                 remaining.remove(tracked_carer)
             if tracked_patient is None and remaining:
-                target = self.patient_x if self.patient_x is not None else 0.75
-                tracked_patient = min(
-                    remaining,
-                    key=lambda person: abs(person["center_x"] - target),
-                )
-                self.patient_id = tracked_patient.get("track_id")
-            if tracked_carer is not None:
-                self.carer_x = tracked_carer["center_x"]
-            if tracked_patient is not None:
-                self.patient_x = tracked_patient["center_x"]
+                tracked_patient = self._match_remaining(remaining, "patient")
+            self._remember(tracked_carer, tracked_patient)
             return tracked_carer, tracked_patient
         if len(people) == 1:
             person = people[0]
+            # Do not lock a role from one body during a floor transfer.
+            # The lying patient is often the only clear detection at first.
+            if self.mode == "floor" and self.carer_id is None and self.patient_id is None:
+                hip_y, aspect = _floor_score(person)
+                if hip_y >= 0.55 or aspect >= 0.72:
+                    return None, person
+                return person, None
             x = person["center_x"]
             if self.patient_x is not None and self.carer_x is not None:
                 if abs(x - self.patient_x) < abs(x - self.carer_x):
-                    self.patient_x = x
-                    self.patient_id = person.get("track_id")
+                    self._remember(None, person)
                     return None, person
-            self.carer_x = x
-            self.carer_id = person.get("track_id")
+            self._remember(person, None)
             return person, None
 
         candidates = sorted(
@@ -667,12 +712,16 @@ class RoleTracker:
             reverse=True,
         )[:3]
         if self.carer_x is None or self.patient_x is None:
-            ordered = sorted(candidates, key=lambda person: person["center_x"])
-            carer, patient = (
-                (ordered[0], ordered[-1])
-                if self.carer_on_left
-                else (ordered[-1], ordered[0])
-            )
+            if self.mode == "floor":
+                ordered = sorted(candidates, key=_floor_score, reverse=True)
+                patient, carer = ordered[0], ordered[1]
+            else:
+                ordered = sorted(candidates, key=lambda person: person["center_x"])
+                carer, patient = (
+                    (ordered[0], ordered[-1])
+                    if self.carer_on_left
+                    else (ordered[-1], ordered[0])
+                )
         else:
             assignments = [
                 (
@@ -687,22 +736,128 @@ class RoleTracker:
             ]
             _, carer, patient = min(assignments, key=lambda item: item[0])
 
-        self.carer_x = carer["center_x"]
-        self.patient_x = patient["center_x"]
-        self.carer_id = carer.get("track_id")
-        self.patient_id = patient.get("track_id")
+        self._remember(carer, patient)
         return carer, patient
 
     def swap(self) -> None:
         self.carer_on_left = not self.carer_on_left
         self.carer_x, self.patient_x = self.patient_x, self.carer_x
+        self.carer_y, self.patient_y = self.patient_y, self.carer_y
         self.carer_id, self.patient_id = self.patient_id, self.carer_id
 
     def reset(self) -> None:
         self.carer_x = None
         self.patient_x = None
+        self.carer_y = None
+        self.patient_y = None
         self.carer_id = None
         self.patient_id = None
+
+    def recalibrate(self) -> None:
+        """Drop the locked identities and mark the lower person as the patient."""
+        self.mode = "floor"
+        self.reset()
+
+
+_FONT_PATHS = {
+    "sans": "/System/Library/Fonts/Supplemental/Arial.ttf",
+    "bold": "/System/Library/Fonts/Supplemental/Arial Bold.ttf",
+    "black": "/System/Library/Fonts/Supplemental/Arial Black.ttf",
+    "italic": "/System/Library/Fonts/Supplemental/Times New Roman Italic.ttf",
+}
+_FONT_CACHE: dict[tuple[str, int], ImageFont.FreeTypeFont] = {}
+
+
+def _font(kind: str, size: int) -> ImageFont.FreeTypeFont:
+    key = (kind, size)
+    font = _FONT_CACHE.get(key)
+    if font is None:
+        font = ImageFont.truetype(_FONT_PATHS[kind], size)
+        _FONT_CACHE[key] = font
+    return font
+
+
+def _text_size(text: str, size: int, kind: str) -> tuple[int, int, int, int]:
+    left, top, right, bottom = ImageDraw.Draw(Image.new("RGB", (1, 1))).textbbox(
+        (0, 0), text, font=_font(kind, size)
+    )
+    return left, top, right - left, bottom - top
+
+
+def _blit_text(
+    frame: np.ndarray,
+    text: str,
+    xy: tuple[int, int],
+    size: int,
+    color: tuple[int, int, int],
+    kind: str = "sans",
+) -> None:
+    left, top, width, height = _text_size(text, size, kind)
+    plate = Image.new("RGBA", (width + 2, height + 2), (0, 0, 0, 0))
+    ImageDraw.Draw(plate).text(
+        (1 - left, 1 - top),
+        text,
+        font=_font(kind, size),
+        fill=(color[2], color[1], color[0], 255),
+    )
+    arr = np.asarray(plate)
+    alpha = arr[:, :, 3:4].astype(np.float32) / 255.0
+    src = arr[:, :, :3][:, :, ::-1]
+    x, y = xy
+    h, w = arr.shape[:2]
+    x0, y0 = max(0, x), max(0, y)
+    x1 = min(frame.shape[1], x + w)
+    y1 = min(frame.shape[0], y + h)
+    if x1 <= x0 or y1 <= y0:
+        return
+    sx0, sy0 = x0 - x, y0 - y
+    crop = frame[y0:y1, x0:x1]
+    patch = src[sy0 : sy0 + (y1 - y0), sx0 : sx0 + (x1 - x0)]
+    mask = alpha[sy0 : sy0 + (y1 - y0), sx0 : sx0 + (x1 - x0)]
+    frame[y0:y1, x0:x1] = (crop * (1.0 - mask) + patch * mask).astype(np.uint8)
+
+
+def _round(
+    img: np.ndarray,
+    x: int,
+    y: int,
+    w: int,
+    h: int,
+    radius: int,
+    color: tuple[int, int, int] | int,
+) -> None:
+    x, y, w, h = int(x), int(y), int(w), int(h)
+    radius = int(max(1, min(radius, w // 2, h // 2)))
+    cv2.rectangle(img, (x + radius, y), (x + w - radius, y + h), color, -1, cv2.LINE_AA)
+    cv2.rectangle(img, (x, y + radius), (x + w, y + h - radius), color, -1, cv2.LINE_AA)
+    cv2.circle(img, (x + radius, y + radius), radius, color, -1, cv2.LINE_AA)
+    cv2.circle(img, (x + w - radius, y + radius), radius, color, -1, cv2.LINE_AA)
+    cv2.circle(img, (x + radius, y + h - radius), radius, color, -1, cv2.LINE_AA)
+    cv2.circle(img, (x + w - radius, y + h - radius), radius, color, -1, cv2.LINE_AA)
+
+
+def _pill(
+    frame: np.ndarray,
+    text: str,
+    x: int,
+    y: int,
+    bg: tuple[int, int, int],
+    fg: tuple[int, int, int],
+    size: int = 18,
+    kind: str = "bold",
+    pad_x: int = 16,
+    pad_y: int = 8,
+) -> tuple[int, int]:
+    _left, _top, width, height = _text_size(text, size, kind)
+    box_w = width + pad_x * 2
+    box_h = height + pad_y * 2
+    if bg == WHITE:
+        _round(frame, x, y, box_w, box_h, box_h // 2, HAIRLINE)
+        _round(frame, x + 2, y + 2, box_w - 4, box_h - 4, max(1, (box_h - 4) // 2), bg)
+    else:
+        _round(frame, x, y, box_w, box_h, box_h // 2, bg)
+    _blit_text(frame, text, (x + pad_x, y + pad_y), size, fg, kind)
+    return box_w, box_h
 
 
 def draw_skeleton(
@@ -718,13 +873,16 @@ def draw_skeleton(
         pts.append((int(lm.x * w), int(lm.y * h)))
     for a, b in POSE_CONNECTIONS:
         if _lm_vis(landmarks[a]) >= 0.4 and _lm_vis(landmarks[b]) >= 0.4:
+            cv2.line(frame, pts[a], pts[b], WHITE, 7, cv2.LINE_AA)
             cv2.line(frame, pts[a], pts[b], color, 3, cv2.LINE_AA)
     for idx in LM.values():
         if _lm_vis(landmarks[idx]) >= 0.4:
-            cv2.circle(frame, pts[idx], 6, color, -1, cv2.LINE_AA)
+            cv2.circle(frame, pts[idx], 7, WHITE, -1, cv2.LINE_AA)
+            cv2.circle(frame, pts[idx], 4, color, -1, cv2.LINE_AA)
     if label:
+        pretty = {"CARER": "Carer", "PATIENT": "Patient"}.get(label, label.title())
         x, y = _pt(landmarks, "nose", w, h)
-        _put(frame, label, (x - 50, max(36, y - 28)), 0.85, color, 2)
+        _pill(frame, pretty, x - 36, max(8, y - 46), WHITE, color, size=16, pad_x=12, pad_y=6)
 
 
 def draw_human_setup(frame: np.ndarray, carer_on_left: bool) -> None:
@@ -782,9 +940,11 @@ def draw_neck_measurement(
     )
     status = status or neck_band(neck_deg)
     color = GREEN if status == "safe" else AMBER if status == "caution" else RED
-    cv2.line(frame, hip, shoulder, color, 5, cv2.LINE_AA)
-    cv2.line(frame, shoulder, head, color, 5, cv2.LINE_AA)
-    _put(frame, f"{neck_deg:.0f} deg", (head[0] + 10, head[1]), 0.6, color, 2)
+    cv2.line(frame, hip, shoulder, WHITE, 8, cv2.LINE_AA)
+    cv2.line(frame, shoulder, head, WHITE, 8, cv2.LINE_AA)
+    cv2.line(frame, hip, shoulder, color, 3, cv2.LINE_AA)
+    cv2.line(frame, shoulder, head, color, 3, cv2.LINE_AA)
+    _pill(frame, f"{neck_deg:.0f}°", head[0] + 10, head[1] - 14, WHITE, color, size=15, pad_x=10, pad_y=5)
 
 
 def draw_trunk_measurement(
@@ -816,18 +976,14 @@ def draw_trunk_measurement(
         sum(point[1] for point in hips) // 2,
     )
     color = GREEN if trunk_deg <= 20.0 else AMBER if trunk_deg <= 60.0 else RED
-    cv2.line(frame, hip, shoulder, color, 6, cv2.LINE_AA)
-    _put(frame, f"trunk {trunk_deg:.0f} deg", (hip[0] + 8, hip[1]), 0.55, color, 2)
+    cv2.line(frame, hip, shoulder, WHITE, 9, cv2.LINE_AA)
+    cv2.line(frame, hip, shoulder, color, 3, cv2.LINE_AA)
+    _pill(frame, f"Trunk {trunk_deg:.0f}°", hip[0] + 8, hip[1] - 12, WHITE, INK, size=15, pad_x=10, pad_y=5)
 
 
 def _put(frame, text, org, scale, color, thick=2) -> None:
-    cv2.putText(frame, text, org, cv2.FONT_HERSHEY_SIMPLEX, scale, BLACK, thick + 3, cv2.LINE_AA)
-    cv2.putText(frame, text, org, cv2.FONT_HERSHEY_SIMPLEX, scale, color, thick, cv2.LINE_AA)
-
-
-def with_sidebar(frame: np.ndarray, width: int = 380) -> np.ndarray:
-    sidebar = np.full((frame.shape[0], width, 3), 18, dtype=np.uint8)
-    return np.hstack((frame, sidebar))
+    size = max(12, int(32 * scale))
+    _blit_text(frame, text, org, size, color, "bold" if thick >= 2 else "sans")
 
 
 def lift_mode(people_count: int) -> str:
@@ -838,8 +994,35 @@ def lift_mode(people_count: int) -> str:
     return "wait"
 
 
-def draw_overlay(
-    frame: np.ndarray,
+def _status_copy(
+    mode: str,
+    neck_status: str | None,
+    people_count: int,
+) -> tuple[str, str, tuple[int, int, int], tuple[int, int, int]]:
+    """Short label, detail line, pill background, pill text. Matches the site pills."""
+    if mode == "box":
+        return "Box lift", "No neck to protect", WHITE, INK
+    if mode == "human" and neck_status == "danger":
+        return "Head drop", "A box cannot fail this", INK, WHITE
+    if mode == "human" and neck_status == "safe":
+        return "Head up", "Neck stayed with the torso", BLUE, WHITE
+    if mode == "human" and neck_status == "caution":
+        return "Check head", "Support the head more", WHITE, INK
+    if mode == "human" and people_count < 2:
+        return "Not visible", "Keep both people in frame", WHITE, INK
+    if mode == "human":
+        return "Finding patient", "Expose the head and shoulders", WHITE, INK
+    return "Watching", "Press 1 for a box, 2 for a person", WHITE, INK
+
+
+def _row(frame: np.ndarray, label: str, value: str, x: int, y: int, width: int) -> None:
+    _blit_text(frame, label, (x, y), 18, MUTED, "sans")
+    _left, _top, text_w, _height = _text_size(value, 18, "bold")
+    _blit_text(frame, value, (x + width - text_w, y), 18, INK, "bold")
+
+
+def present(
+    video: np.ndarray,
     result: RebaResult | None,
     peak: int,
     subtitle: str = "",
@@ -849,98 +1032,85 @@ def draw_overlay(
     carer_trunk_deg: float | None = None,
     people_count: int = 0,
     demo_mode: str | None = None,
-) -> None:
-    h, w = frame.shape[:2]
-    mode = demo_mode or lift_mode(people_count)
-    if mode == "wait" and result is None:
-        _put(frame, "Press 1 for BOX or 2 for HUMAN", (40, 70), 1.05, WHITE, 2)
-        _put(frame, "Carer LEFT  |  Patient RIGHT", (40, 120), 1.05, WHITE, 2)
-        _put(
-            frame,
-            "Trial: 3rd-person camera. Product: sensor suit + first-person.",
-            (28, h - 24),
-            0.55,
-            WHITE,
-            1,
-        )
-        return
+) -> np.ndarray:
+    """Light Careier stage: rounded video on the left, score card on the right."""
+    canvas = np.full((STAGE_H, STAGE_W, 3), PAPER, np.uint8)
+    margin, gap, card_w = 22, 18, 430
+    well_x = well_y = margin
+    well_w = STAGE_W - margin * 2 - gap - card_w
+    well_h = STAGE_H - margin * 2
+    _round(canvas, well_x, well_y, well_w, well_h, 28, (226, 226, 224))
 
+    vh, vw = video.shape[:2]
+    scale = min((well_w - 20) / vw, (well_h - 20) / vh)
+    nw = max(1, int(vw * scale))
+    nh = max(1, int(vh * scale))
+    resized = cv2.resize(video, (nw, nh), interpolation=cv2.INTER_AREA)
+    ox = well_x + (well_w - nw) // 2
+    oy = well_y + (well_h - nh) // 2
+    mask = np.zeros((nh, nw), np.uint8)
+    _round(mask, 0, 0, nw, nh, 22, 255)
+    alpha = mask[:, :, None].astype(np.float32) / 255.0
+    roi = canvas[oy : oy + nh, ox : ox + nw]
+    canvas[oy : oy + nh, ox : ox + nw] = (resized * alpha + roi * (1.0 - alpha)).astype(np.uint8)
+
+    mode = demo_mode or lift_mode(people_count)
     neck_status = patient_neck_status
     if neck_status is None and patient_head_ok_flag is not None:
         neck_status = "safe" if patient_head_ok_flag else "danger"
+    status, detail, pill_bg, pill_fg = _status_copy(mode, neck_status, people_count)
 
-    if mode == "human" and neck_status == "danger":
-        wash_color, verdict, verdict_color = RED, "HUMAN FAIL  —  HEAD DROP", RED
-    elif mode == "human" and neck_status == "safe":
-        wash_color, verdict, verdict_color = GREEN, "HUMAN PASS  —  HEAD UP", GREEN
-    elif mode == "human" and neck_status == "caution":
-        wash_color, verdict, verdict_color = AMBER, "HUMAN CAUTION  —  CHECK HEAD", AMBER
-    elif mode == "human":
-        wash_color, verdict, verdict_color = AMBER, "HUMAN MODE  —  FINDING PATIENT", AMBER
-    elif mode == "box":
-        wash_color, verdict, verdict_color = AMBER, "BOX LIFT  —  NO NECK TO PROTECT", AMBER
-    else:
-        wash_color, verdict, verdict_color = WHITE, "WATCHING", WHITE
+    _pill(canvas, "careier.", ox + 16, oy + 16, WHITE, INK, size=18, kind="bold", pad_x=14, pad_y=7)
+    _pill(canvas, status, ox + 16, oy + 58, pill_bg, pill_fg, size=16, kind="bold", pad_x=14, pad_y=7)
 
-    color = band_color(result.band) if result else wash_color
-    wash = frame.copy()
-    cv2.rectangle(wash, (0, 0), (w, 180), wash_color, -1)
-    cv2.addWeighted(wash, 0.30, frame, 0.70, 0, frame)
-
-    panel_x = w - 380
-    cv2.rectangle(frame, (panel_x, 16), (w - 16, 472), (20, 20, 20), -1)
-    cv2.rectangle(frame, (panel_x, 16), (w - 16, 472), wash_color, 4)
-
-    _put(frame, "CARER REBA", (panel_x + 20, 66), 1.0, CARER_COLOR, 2)
-    if result:
-        _put(frame, str(result.score), (panel_x + 20, 186), 4.2, color, 8)
-        _put(frame, result.band, (panel_x + 20, 236), 1.1, color, 3)
-        _put(frame, f"Peak {peak}", (panel_x + 20, 278), 0.9, WHITE, 2)
-
-    if mode == "box":
-        _put(frame, "OBJECT  (not a person)", (panel_x + 20, 330), 0.7, AMBER, 2)
-        _put(frame, "Warehouse pick = done", (panel_x + 20, 368), 0.65, WHITE, 1)
-    elif neck_status == "safe":
-        _put(frame, "PATIENT HEAD UP", (panel_x + 20, 330), 0.75, GREEN, 2)
-        _put(frame, "Neck stayed with torso", (panel_x + 20, 368), 0.65, WHITE, 1)
-    elif neck_status == "caution":
-        _put(frame, "PATIENT HEAD CAUTION", (panel_x + 20, 330), 0.68, AMBER, 2)
-        _put(frame, "Support head more", (panel_x + 20, 368), 0.65, WHITE, 1)
-    elif neck_status == "danger":
-        _put(frame, "PATIENT HEAD DROP", (panel_x + 20, 330), 0.75, RED, 2)
-        _put(frame, "A box cannot fail this", (panel_x + 20, 368), 0.65, WHITE, 1)
-    elif mode == "human" and people_count < 2:
-        _put(frame, "PATIENT NOT VISIBLE", (panel_x + 20, 330), 0.72, RED, 2)
-        _put(frame, "Separate bodies in frame", (panel_x + 20, 368), 0.62, WHITE, 1)
-    else:
-        _put(frame, "NECK LANDMARKS LOST", (panel_x + 20, 330), 0.68, AMBER, 2)
-        _put(frame, "Expose head + shoulders", (panel_x + 20, 368), 0.62, WHITE, 1)
-
-    neck_text = "--" if patient_neck_deg is None else f"{patient_neck_deg:.0f} deg"
-    if mode == "human":
-        _put(frame, f"Neck angle {neck_text}", (panel_x + 20, 408), 0.6, WHITE, 1)
-    else:
-        _put(frame, f"{people_count} person detected", (panel_x + 20, 408), 0.6, WHITE, 1)
-    trunk_text = "--" if carer_trunk_deg is None else f"{carer_trunk_deg:.0f} deg"
-    _put(frame, f"Carer trunk {trunk_text}", (panel_x + 20, 444), 0.6, WHITE, 1)
-    _put(frame, verdict, (28, 58), 1.05, verdict_color, 3)
-    if result:
-        parts = (
-            f"Trunk {result.trunk}   Neck {result.neck}   "
-            f"Legs {result.legs}   Arm {result.upper_arm}"
-        )
-        _put(frame, parts, (28, 102), 0.75, WHITE, 2)
+    card_x = well_x + well_w + gap
+    _round(canvas, card_x, well_y, card_w, well_h, 28, CARD)
+    x = card_x + 32
+    y = well_y + 36
+    inner = card_w - 64
+    _blit_text(canvas, "careier.", (x, y), 40, INK, "black")
+    y += 58
+    sensing = "—   Now sensing   —"
+    _left, _top, sensing_w, _sensing_h = _text_size(sensing, 20, "italic")
+    _blit_text(canvas, sensing, (x + (inner - sensing_w) // 2, y), 20, MUTED, "italic")
+    y += 52
+    _blit_text(canvas, "Carer", (x, y), 16, MUTED, "sans")
+    y += 28
+    score = "–" if result is None else str(result.score)
+    _blit_text(canvas, score, (x, y), 78, INK, "black")
+    y += 96
+    band = result.band.title() if result else "Waiting"
+    band_bg, band_fg = (INK, WHITE) if result and result.band in ("HIGH", "VERY HIGH") else (WHITE, INK)
+    _pill(canvas, band, x, y, band_bg, band_fg, size=16, pad_x=18, pad_y=8)
+    y += 64
+    _blit_text(canvas, "Patient", (x, y), 16, MUTED, "sans")
+    y += 28
+    _pill(canvas, status, x, y, pill_bg, pill_fg, size=16, pad_x=16, pad_y=8)
+    y += 46
+    _blit_text(canvas, detail, (x, y), 16, MUTED, "sans")
+    y += 42
+    cv2.line(canvas, (x, y), (x + inner, y), HAIRLINE, 1, cv2.LINE_AA)
+    y += 18
+    neck_text = "—" if patient_neck_deg is None else f"{patient_neck_deg:.0f}°"
+    trunk_text = "—" if carer_trunk_deg is None else f"{carer_trunk_deg:.0f}°"
+    _row(canvas, "Neck", neck_text, x, y, inner)
+    y += 32
+    _row(canvas, "Trunk", trunk_text, x, y, inner)
+    y += 32
+    _row(canvas, "Peak", str(peak), x, y, inner)
     if subtitle:
-        _put(frame, subtitle, (28, 142), 0.85, WHITE, 2)
-    _put(frame, "1 BOX  2 HUMAN  S swap  F flip  N camera  W fullscreen  Q quit", (28, 176), 0.48, WHITE, 1)
-    _put(
-        frame,
-        "Trial: 3rd-person camera. Product: sensor suit + first-person. Not a clinical assessment.",
-        (28, h - 24),
-        0.5,
-        WHITE,
-        1,
+        y += 40
+        _blit_text(canvas, subtitle, (x, y), 15, MUTED, "sans")
+    _blit_text(
+        canvas,
+        "C  lower is patient     S swap     Q quit",
+        (x, well_y + well_h - 58),
+        14,
+        MUTED,
+        "sans",
     )
+    _blit_text(canvas, "Camera trial. The vest is the product.", (x, well_y + well_h - 34), 13, MUTED, "sans")
+    return canvas
 
 
 class _FakeLm:
@@ -1042,11 +1212,11 @@ def demo_phase(elapsed: float) -> tuple[str, RebaAngles, int, str, int, bool | N
 
 def run_demo(record_path: str | None) -> None:
     w, h = 900, 720
-    output_w = w + 380
+    output_w, output_h = STAGE_W, STAGE_H
     writer = None
     if record_path:
         fourcc = cv2.VideoWriter_fourcc(*"mp4v")
-        writer = cv2.VideoWriter(record_path, fourcc, 30.0, (output_w, h))
+        writer = cv2.VideoWriter(record_path, fourcc, 30.0, (output_w, output_h))
         if not writer.isOpened():
             raise SystemExit(f"Could not open video writer for {record_path}")
 
@@ -1058,7 +1228,7 @@ def run_demo(record_path: str | None) -> None:
     t0 = time.time()
     if writer is None:
         cv2.namedWindow(WINDOW_TITLE, cv2.WINDOW_NORMAL | cv2.WINDOW_KEEPRATIO)
-        cv2.resizeWindow(WINDOW_TITLE, 1280, 720)
+        cv2.resizeWindow(WINDOW_TITLE, STAGE_W, STAGE_H)
     while True:
         elapsed = frame_i / fps if writer is not None else (time.time() - t0)
         kind, angles, activity, subtitle, people_count, head_ok, extra = demo_phase(elapsed)
@@ -1077,8 +1247,7 @@ def run_demo(record_path: str | None) -> None:
             _put(frame, "BOX", (int(w * 0.64), int(h * 0.56)), 0.8, AMBER, 2)
         elif extra in ("drop", "up"):
             draw_skeleton(frame, _demo_patient(extra, elapsed), w, h, PATIENT_COLOR, "PATIENT")
-        frame = with_sidebar(frame)
-        draw_overlay(
+        frame = present(
             frame,
             result,
             peak,
@@ -1254,6 +1423,224 @@ def switch_camera(
     return None, current, "CAMERA LOST  —  press N to retry"
 
 
+def reset_tracks(model: YOLO) -> None:
+    """Drop ByteTrack history so a seek or loop does not glue old identities on."""
+    predictor = getattr(model, "predictor", None)
+    if predictor is None:
+        return
+    predictor.trackers = []
+
+
+def fit_display(frame: np.ndarray, max_w: int = 1100, max_h: int = 980) -> np.ndarray:
+    height, width = frame.shape[:2]
+    scale = min(max_w / width, max_h / height, 1.0)
+    if scale >= 0.99:
+        return frame
+    return cv2.resize(
+        frame,
+        (max(1, int(width * scale)), max(1, int(height * scale))),
+        interpolation=cv2.INTER_AREA,
+    )
+
+
+def annotate_lift(
+    frame: np.ndarray,
+    pose_model: YOLO,
+    roles: RoleTracker,
+    smoother: PoseSmoother,
+    filt: AngleFilter,
+    feedback: FeedbackSmoother,
+    demo_mode: str,
+    peak: int,
+    subtitle: str,
+) -> tuple[np.ndarray, int]:
+    """Draw both people and the same scores used on the live camera."""
+    height, width = frame.shape[:2]
+    people = yolo_people(frame, pose_model)
+    carer, patient = roles.split(people)
+    if demo_mode == "box":
+        patient = None
+    carer = smoother.update("carer", carer)
+    patient = smoother.update("patient", patient)
+    people_count = int(carer is not None) + int(patient is not None)
+    result = None
+    neck_deg = None
+    trunk_deg = None
+    if carer is not None:
+        draw_skeleton(frame, carer["image"], width, height, CARER_COLOR, "CARER")
+        incoming = carer["angles"]
+        now = time.time()
+        angles = filt.update(incoming, incoming is not None, now)
+        if angles is not None:
+            result = score_reba(angles, activity=filt.activity(now))
+            peak = max(peak, result.score)
+            trunk_deg = angles.trunk_flex_deg
+    if patient is not None:
+        draw_skeleton(frame, patient["image"], width, height, PATIENT_COLOR, "PATIENT")
+        neck_deg = patient_neck_angle(patient["image"], width / max(height, 1))
+
+    neck_deg, neck_status, trunk_deg = feedback.update(neck_deg, trunk_deg)
+    patient_flag = patient_head_ok(neck_deg)
+    if patient is not None:
+        draw_neck_measurement(frame, patient["image"], neck_deg, neck_status)
+    if carer is not None:
+        draw_trunk_measurement(frame, carer["image"], trunk_deg)
+
+    frame = present(
+        frame,
+        result,
+        peak,
+        subtitle=subtitle,
+        patient_head_ok_flag=patient_flag,
+        patient_neck_deg=neck_deg,
+        patient_neck_status=neck_status,
+        carer_trunk_deg=trunk_deg,
+        people_count=people_count,
+        demo_mode=demo_mode,
+    )
+    return frame, peak
+
+
+def run_video(path: str, record_path: str | None) -> None:
+    video_path = Path(path)
+    if not video_path.exists():
+        raise SystemExit(f"Video not found: {video_path}")
+    cap = cv2.VideoCapture(str(video_path))
+    if not cap.isOpened():
+        raise SystemExit(f"Could not open {video_path}")
+
+    fps = cap.get(cv2.CAP_PROP_FPS) or 30.0
+    total = int(cap.get(cv2.CAP_PROP_FRAME_COUNT) or 0)
+    roles = RoleTracker(mode="floor")
+    demo_mode = "human"
+    fullscreen = False
+    paused = False
+    filt = AngleFilter()
+    smoother = PoseSmoother()
+    feedback = FeedbackSmoother()
+    peak = 1
+    pose_model = load_yolo_pose()
+    writer = None
+    shown: np.ndarray | None = None
+    print(f"Playing {video_path.name}  ({total} frames @ {fps:.0f} fps)")
+    print("Patient is the person lower in the frame. S swaps if that is wrong.")
+    print("C recalibrate (lower person = patient)    S swap    Q quit")
+
+    cv2.namedWindow(WINDOW_TITLE, cv2.WINDOW_NORMAL | cv2.WINDOW_KEEPRATIO)
+    cv2.resizeWindow(WINDOW_TITLE, STAGE_W, STAGE_H)
+
+    def clear_motion() -> None:
+        roles.reset()
+        smoother.reset()
+        feedback.reset()
+        filt.reset()
+        reset_tracks(pose_model)
+
+    def seek(delta_frames: int) -> None:
+        current = int(cap.get(cv2.CAP_PROP_POS_FRAMES) or 0)
+        target = current + delta_frames
+        if total > 0:
+            target = target % total
+        target = max(0, target)
+        cap.set(cv2.CAP_PROP_POS_FRAMES, target)
+        clear_motion()
+
+    try:
+        while True:
+            if not paused or shown is None:
+                ok, frame = cap.read()
+                if not ok:
+                    cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
+                    clear_motion()
+                    continue
+                index = int(cap.get(cv2.CAP_PROP_POS_FRAMES) or 0)
+                seconds = max(0, index - 1) / fps
+                state = "PAUSED" if paused else "PLAYING"
+                shown, peak = annotate_lift(
+                    frame,
+                    pose_model,
+                    roles,
+                    smoother,
+                    filt,
+                    feedback,
+                    demo_mode,
+                    peak,
+                    subtitle=(
+                        f"{state}  {seconds:0.1f}s / {total / fps:0.1f}s"
+                        if total
+                        else f"{state}  {seconds:0.1f}s"
+                    ),
+                )
+                if record_path and writer is None:
+                    fourcc = cv2.VideoWriter_fourcc(*"mp4v")
+                    writer = cv2.VideoWriter(
+                        record_path,
+                        fourcc,
+                        fps,
+                        (shown.shape[1], shown.shape[0]),
+                    )
+                if writer is not None:
+                    writer.write(shown)
+
+            cv2.imshow(WINDOW_TITLE, shown)
+            key = cv2.waitKeyEx(1 if not paused else 30)
+            if key in (-1, 255):
+                continue
+            low = key & 0xFF
+            if low in (ord("q"), ord("Q")):
+                break
+            if key == 27 or low == 27:
+                fullscreen = False
+                cv2.setWindowProperty(WINDOW_TITLE, cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_NORMAL)
+                cv2.resizeWindow(WINDOW_TITLE, STAGE_W, STAGE_H)
+            if low in (ord("w"), ord("W")):
+                fullscreen = not fullscreen
+                cv2.setWindowProperty(
+                    WINDOW_TITLE,
+                    cv2.WND_PROP_FULLSCREEN,
+                    cv2.WINDOW_FULLSCREEN if fullscreen else cv2.WINDOW_NORMAL,
+                )
+                if not fullscreen:
+                    cv2.resizeWindow(WINDOW_TITLE, STAGE_W, STAGE_H)
+            if low in (ord("r"), ord("R")):
+                peak = 1
+            if low == ord("1"):
+                demo_mode = "box"
+                clear_motion()
+            if low == ord("2"):
+                demo_mode = "human"
+                clear_motion()
+            if low in (ord("c"), ord("C")):
+                roles.recalibrate()
+                smoother.reset()
+                feedback.reset()
+                filt.reset()
+                print("Recalibrated: lower person is the patient")
+            if low in (ord("s"), ord("S")):
+                roles.swap()
+                smoother.reset()
+                feedback.reset()
+                filt.reset()
+            if low == ord(" "):
+                paused = not paused
+            if low == ord("0"):
+                cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
+                clear_motion()
+                shown = None
+            if low in (ord(","), ord("<")) or key in (63234, 65361):
+                seek(-int(fps))
+                shown = None
+            if low in (ord("."), ord(">")) or key in (63235, 65363):
+                seek(int(fps))
+                shown = None
+    finally:
+        cap.release()
+        if writer is not None:
+            writer.release()
+            print(f"Wrote {record_path}")
+        cv2.destroyAllWindows()
+
+
 def run_camera(camera: int, record_path: str | None) -> None:
     cameras = discover_cameras()
     indices = [i for i, _ in cameras] or [camera]
@@ -1264,10 +1651,10 @@ def run_camera(camera: int, record_path: str | None) -> None:
     demo_mode = "human"
     mirror = False
     fullscreen = False
-    print(f"Live camera {current}. HUMAN mode. Carer LEFT / patient RIGHT. S swaps sides.")
+    print(f"Live camera {current}. HUMAN mode. C sets the lower person as the patient. S swaps.")
 
     cv2.namedWindow(WINDOW_TITLE, cv2.WINDOW_NORMAL | cv2.WINDOW_KEEPRATIO)
-    cv2.resizeWindow(WINDOW_TITLE, 1280, 720)
+    cv2.resizeWindow(WINDOW_TITLE, STAGE_W, STAGE_H)
 
     writer = None
     filt = AngleFilter()
@@ -1331,8 +1718,7 @@ def run_camera(camera: int, record_path: str | None) -> None:
                 if carer is not None:
                     draw_trunk_measurement(frame, carer["image"], trunk_deg)
 
-                frame = with_sidebar(frame)
-                draw_overlay(
+                frame = present(
                     frame,
                     result,
                     peak,
@@ -1366,7 +1752,7 @@ def run_camera(camera: int, record_path: str | None) -> None:
                     cv2.WND_PROP_FULLSCREEN,
                     cv2.WINDOW_NORMAL,
                 )
-                cv2.resizeWindow(WINDOW_TITLE, 1280, 720)
+                cv2.resizeWindow(WINDOW_TITLE, STAGE_W, STAGE_H)
             if key in (ord("w"), ord("W")):
                 fullscreen = not fullscreen
                 cv2.setWindowProperty(
@@ -1375,7 +1761,7 @@ def run_camera(camera: int, record_path: str | None) -> None:
                     cv2.WINDOW_FULLSCREEN if fullscreen else cv2.WINDOW_NORMAL,
                 )
                 if not fullscreen:
-                    cv2.resizeWindow(WINDOW_TITLE, 1280, 720)
+                    cv2.resizeWindow(WINDOW_TITLE, STAGE_W, STAGE_H)
             if key in (ord("r"), ord("R")):
                 peak = 1
             if key in (ord("1"),):
@@ -1390,6 +1776,12 @@ def run_camera(camera: int, record_path: str | None) -> None:
                 roles.reset()
                 smoother.reset()
                 feedback.reset()
+            if key in (ord("c"), ord("C")):
+                roles.recalibrate()
+                smoother.reset()
+                feedback.reset()
+                filt.reset()
+                camera_note = "Recalibrated: lower person is the patient"
             if key in (ord("s"), ord("S")):
                 roles.swap()
                 smoother.reset()
@@ -1417,10 +1809,14 @@ def main() -> None:
     parser.add_argument("--camera", type=int, default=None, help="Camera index (0 = laptop, 1+ often iPhone)")
     parser.add_argument("--iphone", action="store_true", help="Use Continuity Camera / iPhone if it is listed")
     parser.add_argument("--list-cameras", action="store_true", help="Print cameras and exit")
+    parser.add_argument("--video", metavar="PATH", help="Score a video file instead of a camera")
     parser.add_argument("--record", metavar="PATH", help="Save mp4 (demo writes one 16s loop)")
     args = parser.parse_args()
     if args.demo:
         run_demo(args.record)
+        return
+    if args.video:
+        run_video(args.video, args.record)
         return
     cameras = discover_cameras()
     if args.list_cameras:

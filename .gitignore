@@ -13,3 +13,6 @@ demo_*.jpg
 # Local recordings
 recordings/
 *.mov
+
+# Third-party source clips
+floor-transfer.*
