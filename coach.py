@@ -1022,6 +1022,24 @@ def _row(frame: np.ndarray, label: str, value: str, x: int, y: int, width: int) 
     _blit_text(frame, value, (x + width - text_w, y), 18, INK, "bold")
 
 
+def send_to_hub(hub: HubBridge | None, video: np.ndarray, result: RebaResult | None, peak: int, **angles) -> None:
+    """Send the annotated view and the same scores the score card shows to the Careier hub."""
+    if hub is None:
+        return
+    hub.send_frame(video)
+    neck_status = angles["patient_neck_status"]
+    if neck_status is None and angles["patient_head_ok"] is not None:
+        neck_status = "safe" if angles["patient_head_ok"] else "danger"
+    status, detail, _bg, _fg = _status_copy(angles["mode"], neck_status, angles["people"])
+    hub.send(
+        **angles,
+        peak=peak,
+        parts=result.parts if result is not None else None,
+        status=status,
+        detail=detail,
+    )
+
+
 def present(
     video: np.ndarray,
     result: RebaResult | None,
@@ -1249,6 +1267,7 @@ def run_demo(record_path: str | None, hub: HubBridge | None = None) -> None:
             _put(frame, "BOX", (int(w * 0.64), int(h * 0.56)), 0.8, AMBER, 2)
         elif extra in ("drop", "up"):
             draw_skeleton(frame, _demo_patient(extra, elapsed), w, h, PATIENT_COLOR, "PATIENT")
+        video = frame
         frame = present(
             frame,
             result,
@@ -1265,7 +1284,7 @@ def run_demo(record_path: str | None, hub: HubBridge | None = None) -> None:
             people_count=people_count,
             demo_mode="box" if extra == "box" else "human",
         )
-        hub.send(
+        send_to_hub(hub, video, result, peak,
             mode="box" if extra == "box" else "human",
             carer_trunk_deg=angles.trunk_flex_deg,
             reba_score=result.score,
@@ -1499,6 +1518,8 @@ def annotate_lift(
     if carer is not None:
         draw_trunk_measurement(frame, carer["image"], trunk_deg)
 
+    video = frame
+
     frame = present(
         frame,
         result,
@@ -1512,7 +1533,7 @@ def annotate_lift(
         demo_mode=demo_mode,
     )
     if hub is not None:
-        hub.send(
+        send_to_hub(hub, video, result, peak,
             mode=demo_mode,
             carer_trunk_deg=trunk_deg,
             reba_score=result.score if result is not None else None,
@@ -1744,6 +1765,8 @@ def run_camera(camera: int, record_path: str | None, hub: HubBridge | None = Non
                 if carer is not None:
                     draw_trunk_measurement(frame, carer["image"], trunk_deg)
 
+                video = frame
+
                 frame = present(
                     frame,
                     result,
@@ -1760,7 +1783,7 @@ def run_camera(camera: int, record_path: str | None, hub: HubBridge | None = Non
                     people_count=people_count,
                     demo_mode=demo_mode,
                 )
-                hub.send(
+                send_to_hub(hub, video, result, peak,
                     mode=demo_mode,
                     carer_trunk_deg=trunk_deg,
                     reba_score=result.score if result is not None else None,

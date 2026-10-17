@@ -26,11 +26,24 @@ function broadcast(obj) {
   for (const res of clients) res.write(line);
 }
 
+// coach.py sends each annotated camera frame as a few small JPEG chunks; rebuild and forward the whole frame.
+let pendingFrame = null;
+function onChunk(msg, receivedAt) {
+  if (!pendingFrame || pendingFrame.id !== msg.id) pendingFrame = { id: msg.id, of: msg.of, parts: [] };
+  pendingFrame.parts[msg.n] = msg.data;
+  if (pendingFrame.parts.filter(Boolean).length === pendingFrame.of) {
+    broadcast({ type: "camera_frame", source: "camera", jpeg: pendingFrame.parts.join(""), hub_ms: receivedAt });
+    pendingFrame = null;
+  }
+  stats.cameraAt = receivedAt;
+}
+
 const udp = dgram.createSocket("udp4");
 udp.on("message", (buf, rinfo) => {
   const receivedAt = Date.now();
   let msg;
   try { msg = JSON.parse(buf.toString("utf8")); } catch { stats.bad++; return; }
+  if (msg.type === "camera_chunk") return onChunk(msg, receivedAt); // video frames: reassemble, don't log
   const rec = { ...msg, hub_ms: receivedAt };
   log.write(JSON.stringify(rec) + "\n");
   broadcast(rec);
