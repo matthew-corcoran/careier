@@ -1513,7 +1513,7 @@ def annotate_lift(
     return frame, peak
 
 
-def run_video(path: str, record_path: str | None) -> None:
+def run_video(path: str, record_path: str | None, headless: bool = False) -> None:
     video_path = Path(path)
     if not video_path.exists():
         raise SystemExit(f"Video not found: {video_path}")
@@ -1535,11 +1535,13 @@ def run_video(path: str, record_path: str | None) -> None:
     writer = None
     shown: np.ndarray | None = None
     print(f"Playing {video_path.name}  ({total} frames @ {fps:.0f} fps)")
-    print("Patient is the person lower in the frame. S swaps if that is wrong.")
-    print("C recalibrate (lower person = patient)    S swap    Q quit")
-
-    cv2.namedWindow(WINDOW_TITLE, cv2.WINDOW_NORMAL | cv2.WINDOW_KEEPRATIO)
-    cv2.resizeWindow(WINDOW_TITLE, STAGE_W, STAGE_H)
+    if headless:
+        print(f"Exporting one pass to {record_path}")
+    else:
+        print("Patient is the person lower in the frame. S swaps if that is wrong.")
+        print("C recalibrate (lower person = patient)    S swap    Q quit")
+        cv2.namedWindow(WINDOW_TITLE, cv2.WINDOW_NORMAL | cv2.WINDOW_KEEPRATIO)
+        cv2.resizeWindow(WINDOW_TITLE, STAGE_W, STAGE_H)
 
     def clear_motion() -> None:
         roles.reset()
@@ -1562,6 +1564,8 @@ def run_video(path: str, record_path: str | None) -> None:
             if not paused or shown is None:
                 ok, frame = cap.read()
                 if not ok:
+                    if record_path:
+                        break
                     cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
                     clear_motion()
                     continue
@@ -1584,16 +1588,28 @@ def run_video(path: str, record_path: str | None) -> None:
                     ),
                 )
                 if record_path and writer is None:
-                    fourcc = cv2.VideoWriter_fourcc(*"mp4v")
-                    writer = cv2.VideoWriter(
-                        record_path,
-                        fourcc,
-                        fps,
-                        (shown.shape[1], shown.shape[0]),
-                    )
+                    Path(record_path).parent.mkdir(parents=True, exist_ok=True)
+                    size = (shown.shape[1], shown.shape[0])
+                    for codec in ("avc1", "mp4v"):
+                        writer = cv2.VideoWriter(
+                            record_path,
+                            cv2.VideoWriter_fourcc(*codec),
+                            fps,
+                            size,
+                        )
+                        if writer.isOpened():
+                            break
+                        writer.release()
+                        writer = None
+                    if writer is None:
+                        raise SystemExit(f"Could not open video writer for {record_path}")
                 if writer is not None:
                     writer.write(shown)
+                    if headless and int(fps) and index % int(fps) == 0:
+                        print(f"  {seconds:0.0f}s / {total / fps:0.0f}s")
 
+            if headless:
+                continue
             cv2.imshow(WINDOW_TITLE, shown)
             key = cv2.waitKeyEx(1 if not paused else 30)
             if key in (-1, 255):
@@ -1650,7 +1666,8 @@ def run_video(path: str, record_path: str | None) -> None:
         if writer is not None:
             writer.release()
             print(f"Wrote {record_path}")
-        cv2.destroyAllWindows()
+        if not headless:
+            cv2.destroyAllWindows()
 
 
 def run_camera(camera: int, record_path: str | None, hub: HubBridge | None = None) -> None:
@@ -1833,6 +1850,7 @@ def main() -> None:
     parser.add_argument("--iphone", action="store_true", help="Use Continuity Camera / iPhone if it is listed")
     parser.add_argument("--list-cameras", action="store_true", help="Print cameras and exit")
     parser.add_argument("--video", metavar="PATH", help="Score a video file instead of a camera")
+    parser.add_argument("--export", metavar="PATH", help="Score --video once, save an mp4, and exit")
     parser.add_argument("--record", metavar="PATH", help="Save mp4 (demo writes one 16s loop)")
     parser.add_argument("--hub", default="127.0.0.1:5005", metavar="HOST:PORT", help="Send angles to the Careier hub over UDP")
     parser.add_argument("--no-hub", action="store_true", help="Don't send angles to the hub")
@@ -1842,7 +1860,7 @@ def main() -> None:
         run_demo(args.record, hub)
         return
     if args.video:
-        run_video(args.video, args.record)
+        run_video(args.video, args.export or args.record, headless=bool(args.export))
         return
     cameras = discover_cameras()
     if args.list_cameras:

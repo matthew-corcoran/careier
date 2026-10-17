@@ -10,8 +10,9 @@ models/
 # Generated preview frames
 demo_*.jpg
 
-# Local recordings
+# Local recordings and scored exports
 recordings/
+exports/
 *.mov
 
 # Third-party source clips
