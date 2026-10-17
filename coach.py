@@ -1465,6 +1465,7 @@ def annotate_lift(
     demo_mode: str,
     peak: int,
     subtitle: str,
+    hub: HubBridge | None = None,
 ) -> tuple[np.ndarray, int]:
     """Draw both people and the same scores used on the live camera."""
     height, width = frame.shape[:2]
@@ -1510,10 +1511,21 @@ def annotate_lift(
         people_count=people_count,
         demo_mode=demo_mode,
     )
+    if hub is not None:
+        hub.send(
+            mode=demo_mode,
+            carer_trunk_deg=trunk_deg,
+            reba_score=result.score if result is not None else None,
+            reba_band=result.band if result is not None else None,
+            patient_neck_deg=neck_deg,
+            patient_neck_status=neck_status,
+            patient_head_ok=patient_flag,
+            people=people_count,
+        )
     return frame, peak
 
 
-def run_video(path: str, record_path: str | None) -> None:
+def run_video(path: str, record_path: str | None, hub: HubBridge | None = None) -> None:
     video_path = Path(path)
     if not video_path.exists():
         raise SystemExit(f"Video not found: {video_path}")
@@ -1582,6 +1594,7 @@ def run_video(path: str, record_path: str | None) -> None:
                         if total
                         else f"{state}  {seconds:0.1f}s"
                     ),
+                    hub=hub,
                 )
                 if record_path and writer is None:
                     fourcc = cv2.VideoWriter_fourcc(*"mp4v")
@@ -1842,7 +1855,7 @@ def main() -> None:
         run_demo(args.record, hub)
         return
     if args.video:
-        run_video(args.video, args.record)
+        run_video(args.video, args.record, hub)
         return
     cameras = discover_cameras()
     if args.list_cameras:
