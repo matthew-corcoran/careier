@@ -3,7 +3,7 @@
 // Every message is also appended to hub/data/session-<time>.jsonl as the raw dataset.
 import dgram from "node:dgram";
 import { createServer } from "node:http";
-import { readFile, mkdir, stat } from "node:fs/promises";
+import { readFile, readdir, mkdir, stat } from "node:fs/promises";
 import { createWriteStream, createReadStream } from "node:fs";
 import { networkInterfaces } from "node:os";
 import { fileURLToPath } from "node:url";
@@ -95,12 +95,45 @@ setInterval(() => broadcast({ type: "hub_stats", ...stats, clients: clients.size
 
 // The website (../site) is served from here too, so its posture demo can follow the live sensor.
 const siteDir = join(dir, "..", "site");
-const TYPES = { ".html": "text/html; charset=utf-8", ".jpg": "image/jpeg", ".png": "image/png", ".mp4": "video/mp4", ".css": "text/css", ".js": "text/javascript" };
+// coach.py --export writes scored clips here; the dashboard's Demo video switch plays the newest one.
+const exportsDir = join(dir, "..", "exports");
+const TYPES = { ".html": "text/html; charset=utf-8", ".jpg": "image/jpeg", ".png": "image/png", ".mp4": "video/mp4", ".css": "text/css", ".js": "text/javascript", ".json": "application/json" };
 async function serveSite(req, res) {
   let rel = decodeURIComponent(new URL(req.url, "http://x").pathname.slice("/site/".length)) || "index.html";
   // The site embeds the dashboard as live.html; it is the same file as the capture screen.
   const file = rel === "live.html" ? join(dir, "capture.html") : normalize(join(siteDir, rel));
   if (!file.startsWith(siteDir) && rel !== "live.html") { res.writeHead(403); return res.end(); }
+  return serveFile(file, req, res);
+}
+
+async function serveExport(req, res) {
+  const rel = decodeURIComponent(new URL(req.url, "http://x").pathname.slice("/exports/".length));
+  const file = normalize(join(exportsDir, rel));
+  if (!file.startsWith(exportsDir + "/")) { res.writeHead(403); return res.end(); }
+  return serveFile(file, req, res);
+}
+
+// Newest exported clip that has both its timeline and its annotated feed.
+async function demoClip(res) {
+  let names = [];
+  try { names = await readdir(exportsDir); } catch {}
+  const clips = [];
+  for (const name of names.filter((n) => n.endsWith(".json"))) {
+    try {
+      const file = join(exportsDir, name);
+      const clip = JSON.parse(await readFile(file, "utf8"));
+      if (!clip.video || !Array.isArray(clip.timeline)) continue;
+      await stat(join(exportsDir, clip.video));
+      clips.push({ mtime: (await stat(file)).mtimeMs, clip: { ...clip, video: `/exports/${encodeURIComponent(clip.video)}` } });
+    } catch {}
+  }
+  if (!clips.length) { res.writeHead(404); return res.end(); }
+  clips.sort((a, b) => b.mtime - a.mtime);
+  res.writeHead(200, { "content-type": "application/json", "cache-control": "no-cache" });
+  res.end(JSON.stringify(clips[0].clip));
+}
+
+async function serveFile(file, req, res) {
   let size;
   try { size = (await stat(file)).size; } catch { res.writeHead(404); return res.end(); }
   const type = TYPES[extname(file)] || "application/octet-stream";
@@ -134,6 +167,8 @@ createServer(async (req, res) => {
   }
   if (req.url === "/site") { res.writeHead(302, { location: "/site/" }); return res.end(); }
   if (req.url.startsWith("/site/")) return serveSite(req, res);
+  if (req.url === "/demo-clip") return demoClip(res);
+  if (req.url.startsWith("/exports/")) return serveExport(req, res);
   res.writeHead(404).end();
 }).listen(HTTP_PORT, () => {
   const ips = Object.values(networkInterfaces()).flat().filter((i) => i && i.family === "IPv4" && !i.internal).map((i) => i.address);

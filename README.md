@@ -121,6 +121,18 @@ The sensor sends to this laptop's IP (`ipconfig getifaddr en0`) on port 5005. To
 node hub/simulate.mjs
 ```
 
+### Live camera or demo video
+
+The camera panel has a **Live / Demo video** switch (or press `D`). Live shows the coach's stream. Demo video plays the newest scored clip in `exports/` with the scores the coach recorded for it, so the demo works even if the iPhone drops out. The vest keeps streaming live in both modes.
+
+Make the demo clip once:
+
+```bash
+python coach.py --video floor-transfer.mp4 --export exports/floor-transfer-careier.mp4
+```
+
+That also writes `floor-transfer-careier.feed.mp4` and `floor-transfer-careier.json`, which the switch plays. With no export, it falls back to `site/media/demo.mp4`.
+
 ### Website with a live posture demo
 
 The hub also serves the project website at http://localhost:8090/site/. When opened from the hub, "Try a posture" follows the live sensor: the figure bends as the wearer bends. Click "Live sensor" to pause it and use the slider.

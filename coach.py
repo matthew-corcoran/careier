@@ -30,7 +30,7 @@ from reba import (
     RebaResult,
     score_reba,
 )
-from hub_bridge import HubBridge
+from hub_bridge import ClipRecorder, HubBridge
 
 POSE_CONNECTIONS = (
     (11, 12),
@@ -1572,6 +1572,7 @@ def run_video(
     pose_model = load_yolo_pose()
     writer = None
     shown: np.ndarray | None = None
+    recorder = ClipRecorder(record_path, fps) if headless and record_path else None
     print(f"Playing {video_path.name}  ({total} frames @ {fps:.0f} fps)")
     if headless:
         print(f"Exporting one pass to {record_path}")
@@ -1609,6 +1610,8 @@ def run_video(
                     continue
                 index = int(cap.get(cv2.CAP_PROP_POS_FRAMES) or 0)
                 seconds = max(0, index - 1) / fps
+                if recorder is not None:
+                    recorder.t = seconds
                 state = "PAUSED" if paused else "PLAYING"
                 shown, peak = annotate_lift(
                     frame,
@@ -1624,7 +1627,7 @@ def run_video(
                         if total
                         else f"{state}  {seconds:0.1f}s"
                     ),
-                    hub=hub,
+                    hub=recorder or hub,
                 )
                 if record_path and writer is None:
                     Path(record_path).parent.mkdir(parents=True, exist_ok=True)
@@ -1705,6 +1708,8 @@ def run_video(
         if writer is not None:
             writer.release()
             print(f"Wrote {record_path}")
+        if recorder is not None:
+            recorder.close()
         if not headless:
             cv2.destroyAllWindows()
 

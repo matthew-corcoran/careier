@@ -67,7 +67,12 @@ button { font: inherit; }
 
 /* camera */
 .cam { position: relative; border-radius: 16px; overflow: hidden; background: #0d0e10; aspect-ratio: 16 / 9; display: grid; place-items: center; }
-.cam img { width: 100%; height: 100%; object-fit: contain; display: block; }
+/* Absolute so a portrait clip letterboxes inside the 16:9 box instead of stretching it. */
+.cam img, .cam video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; display: block; }
+.head-right { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.seg { display: inline-flex; gap: 2px; padding: 3px; border-radius: 99px; background: var(--card); border: 1px solid var(--line); }
+.seg button { border: 0; background: transparent; color: var(--muted); font: 500 0.78rem var(--sans); padding: 5px 12px; border-radius: 99px; cursor: pointer; }
+.seg button[aria-pressed="true"] { background: var(--ink); color: var(--canvas); }
 .cam .empty { color: #8c8c91; text-align: center; font-size: 0.9rem; padding: 20px; display: flex; flex-direction: column; gap: 8px; }
 .cam .empty code { font: 0.82rem var(--mono); color: #d6d6d6; background: rgba(255,255,255,.08); padding: 6px 10px; border-radius: 8px; }
 .cam .badge { position: absolute; left: 14px; top: 14px; display: flex; gap: 6px; }
@@ -149,15 +154,24 @@ button:focus-visible, summary:focus-visible { outline: 2px solid var(--accent); 
   <main class="grid">
     <div class="col">
       <section class="panel">
-        <div class="head"><h2>Camera coach</h2><span class="muted small" id="camMode">YOLO pose · REBA · patient neck</span></div>
+        <div class="head"><h2>Camera coach</h2>
+          <div class="head-right">
+            <span class="muted small" id="camMode">YOLO pose · REBA · patient neck</span>
+            <div class="seg" id="camSource" role="group" aria-label="Camera source (D toggles)">
+              <button type="button" id="srcLive" aria-pressed="true">Live</button>
+              <button type="button" id="srcDemo" aria-pressed="false">Demo video</button>
+            </div>
+          </div>
+        </div>
         <div class="cam" id="cam">
           <div class="empty" id="camEmpty">
             <span>Start Matthew's coach to see the annotated view here</span>
             <code>python coach.py --iphone</code>
-            <code>python coach.py --video floor-transfer.mp4</code>
+            <span>or flip to Demo video</span>
           </div>
           <img id="camImg" alt="Annotated camera view from the coach: carer and patient skeletons" hidden>
-          <div class="badge"><span class="pill" id="camStatus" hidden></span></div>
+          <video id="camVid" muted loop playsinline hidden></video>
+          <div class="badge"><span class="pill" id="camStatus" hidden></span><span class="pill" id="camRec" hidden>Recorded clip</span></div>
         </div>
       </section>
       <section class="panel">
@@ -222,6 +236,9 @@ const WINDOW_MS = 20000;
 const frames = [], alerts = [], spans = [], lifts = [], cam = [];
 let liftOpen = null, selected = null, lastEvent = null, lastFrame = null, frameTimes = [];
 let lastCam = null;
+// Camera source: "live" shows the coach's stream; "demo" plays a recorded clip with its recorded scores.
+// The vest keeps streaming live in both, so a carer can wear it while the clip plays.
+let source = "live", liveFrameSeen = false, demoClip = null, demoTimer = null, demoIdx = 0, demoPeak = 1, demoLastT = 0;
 
 const num = (v) => (typeof v === "number" && isFinite(v) ? v : null);
 const pick = (o, ...keys) => { for (const k of keys) if (num(o[k]) != null) return o[k]; return null; };
@@ -253,8 +270,8 @@ let fieldIdx = Object.fromEntries(DEFAULT_FIELDS.map((f, i) => [f, i]));
 function onMessage(m) {
   const t = m.hub_ms ?? Date.now();
   if (m.type === "hub_stats") return onStats(m);
-  if (m.type === "camera_frame") return onCameraFrame(m);
-  if (m.source === "camera") return onCamera(m, t);
+  if (m.type === "camera_frame") { if (source === "live") onCameraFrame(m); return; }
+  if (m.source === "camera") { if (source === "live") onCamera(m, t); return; }
   if (m.type === "hello" && Array.isArray(m.fields)) fieldIdx = Object.fromEntries(m.fields.map((f, i) => [f, i]));
   if (m.type === "frames" && Array.isArray(m.upper)) return onFrames(m, t);
   if (m.type === "lift") {
@@ -308,9 +325,88 @@ function showRaw() {
 
 // ---------- camera coach (Matthew's model) ----------
 function onCameraFrame(m) {
+  liveFrameSeen = true;
   $("camImg").src = "data:image/jpeg;base64," + m.jpeg;
   $("camImg").hidden = false;
   $("camEmpty").hidden = true;
+}
+
+// ---------- camera source switch ----------
+const DEMO_FALLBACK = location.pathname === "/" || location.pathname === "/index.html" ? "/site/media/demo.mp4" : "media/demo.mp4";
+const store = { get: (k) => { try { return localStorage.getItem(k); } catch { return null; } }, set: (k, v) => { try { localStorage.setItem(k, v); } catch {} } };
+
+function resetCameraCards() {
+  cam.length = 0;
+  $("camMode").textContent = "YOLO pose · REBA · patient neck";
+  $("carerCard").className = "blob";
+  $("rebaVal").textContent = "–";
+  $("rebaBand").textContent = "Waiting";
+  $("rebaPeak").textContent = "Peak –";
+  $("parts").hidden = true;
+  $("patientPill").textContent = "Not visible";
+  $("patientPill").className = "pill ghost";
+  $("patientDetail").textContent = "Keep both people in frame";
+  $("neckVal").textContent = "–";
+  $("neckMarker").hidden = true;
+  $("camTrunk").textContent = "–";
+  $("diff").textContent = "–";
+  $("camStatus").hidden = true;
+}
+
+function setSource(next) {
+  source = next;
+  store.set("careier.camSource", next);
+  $("srcLive").setAttribute("aria-pressed", String(next === "live"));
+  $("srcDemo").setAttribute("aria-pressed", String(next === "demo"));
+  $("camRec").hidden = next !== "demo";
+  resetCameraCards();
+  if (next === "demo") return startDemo();
+  stopDemo();
+  $("camImg").hidden = !liveFrameSeen;
+  $("camEmpty").hidden = liveFrameSeen;
+}
+
+async function startDemo() {
+  if (demoClip === null) {
+    demoClip = false;
+    try { const r = await fetch("/demo-clip", { cache: "no-store" }); if (r.ok) demoClip = await r.json(); } catch {}
+  }
+  if (source !== "demo") return;
+  const vid = $("camVid");
+  const src = demoClip ? demoClip.video : DEMO_FALLBACK;
+  if (vid.getAttribute("src") !== src) vid.src = src;
+  vid.setAttribute("aria-label", demoClip ? "Recorded floor transfer, scored by the camera coach" : "Recorded camera coach demo");
+  $("camImg").hidden = true;
+  $("camEmpty").hidden = true;
+  vid.hidden = false;
+  vid.currentTime = 0;
+  demoIdx = 0; demoPeak = 1; demoLastT = 0;
+  vid.play().catch(() => {});
+  clearInterval(demoTimer);
+  demoTimer = setInterval(tickDemo, 66);
+}
+
+function stopDemo() {
+  clearInterval(demoTimer);
+  demoTimer = null;
+  const vid = $("camVid");
+  vid.pause();
+  vid.hidden = true;
+}
+
+function tickDemo() {
+  const vid = $("camVid"), t = vid.currentTime, now = Date.now();
+  if (t < demoLastT) { demoIdx = 0; demoPeak = 1; } // the clip looped
+  demoLastT = t;
+  if (demoClip) {
+    const tl = demoClip.timeline;
+    while (demoIdx + 1 < tl.length && tl[demoIdx + 1].t <= t) demoIdx++;
+    if (tl[demoIdx]) onCamera({ ...tl[demoIdx], hub_ms: now }, now);
+    return;
+  }
+  const { take, tilt } = replayAt(t);
+  demoPeak = Math.max(demoPeak, take.cam.reba);
+  onCamera(takeCamera(take, tilt, demoPeak, now), now);
 }
 
 function onCamera(m, t) {
@@ -376,7 +472,8 @@ function onStats(s) {
   $("cSensor").textContent = live ? "Vest sensor" : s.lastAt ? "Vest: no data " + Math.round((now - s.lastAt) / 1000) + "s" : "Vest sensor";
   $("cSensor").className = "chip " + (live ? "on" : s.lastAt ? "off" : "");
   const camLive = s.cameraAt && now - s.cameraAt < 2000;
-  $("cCam").className = "chip " + (camLive ? "on" : s.cameraAt ? "off" : "");
+  $("cCam").textContent = source === "demo" ? "Camera: demo video" : "Camera coach";
+  $("cCam").className = "chip " + (source === "demo" ? "warn" : camLive ? "on" : s.cameraAt ? "off" : "");
   $("cRate").textContent = `${frameTimes.length} Hz` + (s.status?.rssi != null ? ` · ${s.status.rssi} dBm` : "");
   $("lost").textContent = s.dropped ?? 0;
 }
@@ -471,8 +568,38 @@ else {
   es.onmessage = (e) => { try { onMessage(JSON.parse(e.data)); } catch (err) { console.warn(err); } };
 }
 
+// The coach's demo clip: a box, then a head-drop lift, then a supported lift.
+// One lift per take: [start s, end s, peak tilt, peak twist].
+const TAKES = [
+  { from: 0, to: 6.5, lift: [1.5, 5.0, 40, 6], cam: { mode: "box", reba: 5, band: "MEDIUM", neck: null, ns: null, ok: null, status: "Box lift", detail: "No neck to protect", people: 1 } },
+  { from: 6.5, to: 13.5, lift: [7.5, 12.2, 72, 28], cam: { mode: "human", reba: 13, band: "VERY HIGH", neck: 64, ns: "danger", ok: false, status: "Head drop", detail: "A box cannot fail this", people: 2 } },
+  { from: 13.5, to: 21, lift: [14.5, 19.6, 38, 6], cam: { mode: "human", reba: 5, band: "MEDIUM", neck: 14, ns: "safe", ok: true, status: "Head up", detail: "Neck stayed with the torso", people: 2 } },
+];
+
+function replayAt(t) {
+  const take = TAKES.find((k) => t >= k.from && t < k.to) || TAKES[0];
+  const [a, b, top, tw] = take.lift;
+  const p = t >= a && t <= b ? (t - a) / (b - a) : -1;
+  const tilt = p < 0 ? 4 + Math.random() * 2 : 8 + (top - 8) * Math.sin(Math.PI * p);
+  const twist = p < 0 ? 0 : tw * Math.max(0, Math.sin(Math.PI * (p - 0.35) / 0.5));
+  return { take, tilt, twist };
+}
+
+// The clip's own score card holds one REBA score and patient status per take.
+function takeCamera(take, tilt, peak, now) {
+  const c = take.cam;
+  return {
+    type: "camera", source: "camera", hub_ms: now, mode: c.mode, people: c.people,
+    carer_trunk_deg: +(tilt - 3 + Math.random() * 3).toFixed(1),
+    reba: c.reba, reba_band: c.band, reba_peak: peak,
+    reba_parts: { Trunk: tilt > 60 ? 4 : tilt > 20 ? 3 : 2, Neck: c.ok === false ? 2 : 1, Legs: tilt > 60 ? 1 : 2, Arm: 2 },
+    patient_neck_deg: c.neck, patient_neck_status: c.ns, patient_head_ok: c.ok,
+    status: c.status, detail: c.detail,
+  };
+}
+
 // Replay: for the published site, which can't reach a laptop. Plays the coach's demo clip
-// (box, then a head-drop lift, then a supported lift) and generates matching vest and camera data.
+// and generates matching vest and camera data.
 function startReplay() {
   $("cHub").textContent = "Replay";
   $("btnRecal").hidden = true;
@@ -486,22 +613,12 @@ function startReplay() {
   vid.play().catch(() => {});
   const t0 = performance.now();
   const clock = () => (vid.readyState >= 2 && vid.duration ? vid.currentTime : ((performance.now() - t0) / 1000) % 21);
-  // one lift per take: [start s, end s, peak tilt, peak twist]
-  const takes = [
-    { from: 0, to: 6.5, lift: [1.5, 5.0, 40, 6], cam: { mode: "box", reba: 5, band: "MEDIUM", neck: null, ns: null, ok: null, status: "Box lift", detail: "No neck to protect", people: 1 } },
-    { from: 6.5, to: 13.5, lift: [7.5, 12.2, 72, 28], cam: { mode: "human", reba: 13, band: "VERY HIGH", neck: 64, ns: "danger", ok: false, status: "Head drop", detail: "A box cannot fail this", people: 2 } },
-    { from: 13.5, to: 21, lift: [14.5, 19.6, 38, 6], cam: { mode: "human", reba: 5, band: "MEDIUM", neck: 14, ns: "safe", ok: true, status: "Head up", detail: "Neck stayed with the torso", people: 2 } },
-  ];
   let lastT = 0, lifting = false, liftStart = 0, beeped = false, twisted = false, peak = 1, n = 0;
   setInterval(() => {
     const t = clock();
     if (t < lastT) { peak = 1; lifting = false; }
     lastT = t;
-    const take = takes.find((k) => t >= k.from && t < k.to) || takes[0];
-    const [a, b, top, tw] = take.lift;
-    const p = t >= a && t <= b ? (t - a) / (b - a) : -1;
-    const tilt = p < 0 ? 4 + Math.random() * 2 : 8 + (top - 8) * Math.sin(Math.PI * p);
-    const twist = p < 0 ? 0 : tw * Math.max(0, Math.sin(Math.PI * (p - 0.35) / 0.5));
+    const { take, tilt, twist } = replayAt(t);
     const now = Date.now();
     onMessage({ type: "frame", trunk_flexion: +tilt.toFixed(1), twist: +twist.toFixed(1), calibrated: true, hub_ms: now });
     if (!lifting && tilt > 22) { lifting = true; liftStart = now; beeped = twisted = false; onMessage({ type: "lift_start", hub_ms: now }); }
@@ -509,18 +626,8 @@ function startReplay() {
     if (lifting && twist > 20 && !twisted) { twisted = true; onMessage({ type: "alert", kind: "twist", hub_ms: now }); }
     if (lifting && tilt < 12) { lifting = false; onMessage({ type: "lift_end", duration_ms: now - liftStart, score: null, hub_ms: now }); }
     if (n++ % 3 === 0) {
-      const c = take.cam;
-      // The clip's own score card holds one REBA score and patient status per take.
-      const reba = c.reba;
-      peak = Math.max(peak, reba);
-      onMessage({
-        type: "camera", source: "camera", hub_ms: now, mode: c.mode, people: c.people,
-        carer_trunk_deg: +(tilt - 3 + Math.random() * 3).toFixed(1),
-        reba, reba_band: c.band, reba_peak: peak,
-        reba_parts: { Trunk: tilt > 60 ? 4 : tilt > 20 ? 3 : 2, Neck: c.ok === false ? 2 : 1, Legs: tilt > 60 ? 1 : 2, Arm: 2 },
-        patient_neck_deg: c.neck, patient_neck_status: c.ns, patient_head_ok: c.ok,
-        status: c.status, detail: c.detail,
-      });
+      peak = Math.max(peak, take.cam.reba);
+      onMessage(takeCamera(take, tilt, peak, now));
     }
   }, 20);
   setInterval(() => onStats({ lastAt: Date.now(), cameraAt: Date.now(), dropped: 0, status: { rssi: -58 } }), 1000);
@@ -540,6 +647,17 @@ $("btnRecal").onclick = async (e) => {
   setTimeout(() => (b.textContent = "Recalibrate"), 1500);
 };
 $("btnClear").onclick = () => { lifts.length = 0; alerts.length = 0; spans.length = 0; selected = null; renderLifts(); };
+
+if (REPLAY) $("camSource").hidden = true;
+else {
+  $("srcLive").onclick = () => setSource("live");
+  $("srcDemo").onclick = () => setSource("demo");
+  document.addEventListener("keydown", (e) => {
+    if (e.metaKey || e.ctrlKey || e.altKey || e.target.closest("input, textarea")) return;
+    if (e.key === "d" || e.key === "D") setSource(source === "demo" ? "live" : "demo");
+  });
+  if (store.get("careier.camSource") === "demo") setSource("demo");
+}
 </script>
 </body>
 </html>
