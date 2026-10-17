@@ -3,11 +3,11 @@
 // Every message is also appended to hub/data/session-<time>.jsonl as the raw dataset.
 import dgram from "node:dgram";
 import { createServer } from "node:http";
-import { readFile, mkdir } from "node:fs/promises";
-import { createWriteStream } from "node:fs";
+import { readFile, mkdir, stat } from "node:fs/promises";
+import { createWriteStream, createReadStream } from "node:fs";
 import { networkInterfaces } from "node:os";
 import { fileURLToPath } from "node:url";
-import { join } from "node:path";
+import { join, normalize, extname } from "node:path";
 
 const UDP_PORT = Number(process.env.UDP_PORT || 5005);
 const HTTP_PORT = Number(process.env.HTTP_PORT || 8090);
@@ -54,6 +54,27 @@ udp.bind(UDP_PORT);
 
 setInterval(() => broadcast({ type: "hub_stats", ...stats, clients: clients.size }), 1000);
 
+// The website (../site) is served from here too, so its posture demo can follow the live sensor.
+const siteDir = join(dir, "..", "site");
+const TYPES = { ".html": "text/html; charset=utf-8", ".jpg": "image/jpeg", ".png": "image/png", ".mp4": "video/mp4", ".css": "text/css", ".js": "text/javascript" };
+async function serveSite(req, res) {
+  let rel = decodeURIComponent(new URL(req.url, "http://x").pathname.slice("/site/".length)) || "index.html";
+  const file = normalize(join(siteDir, rel));
+  if (!file.startsWith(siteDir)) { res.writeHead(403); return res.end(); }
+  let size;
+  try { size = (await stat(file)).size; } catch { res.writeHead(404); return res.end(); }
+  const type = TYPES[extname(file)] || "application/octet-stream";
+  const range = /bytes=(\d*)-(\d*)/.exec(req.headers.range || "");
+  if (range) { // video seeking needs byte ranges
+    const start = range[1] ? Number(range[1]) : 0;
+    const end = range[2] ? Number(range[2]) : size - 1;
+    res.writeHead(206, { "content-type": type, "content-range": `bytes ${start}-${end}/${size}`, "accept-ranges": "bytes", "content-length": end - start + 1 });
+    return createReadStream(file, { start, end }).pipe(res);
+  }
+  res.writeHead(200, { "content-type": type, "content-length": size, "accept-ranges": "bytes" });
+  createReadStream(file).pipe(res);
+}
+
 createServer(async (req, res) => {
   if (req.url === "/events") {
     res.writeHead(200, { "content-type": "text/event-stream", "cache-control": "no-cache", connection: "keep-alive" });
@@ -66,11 +87,14 @@ createServer(async (req, res) => {
     res.writeHead(200, { "content-type": "text/html; charset=utf-8" });
     return res.end(await readFile(join(dir, "capture.html")));
   }
+  if (req.url === "/site") { res.writeHead(302, { location: "/site/" }); return res.end(); }
+  if (req.url.startsWith("/site/")) return serveSite(req, res);
   res.writeHead(404).end();
 }).listen(HTTP_PORT, () => {
   const ips = Object.values(networkInterfaces()).flat().filter((i) => i && i.family === "IPv4" && !i.internal).map((i) => i.address);
   console.log(`Careier hub`);
   console.log(`  UDP listening on port ${UDP_PORT}  (set HUB_IP on the sensor to one of: ${ips.join(", ") || "?"})`);
   console.log(`  Capture screen: http://localhost:${HTTP_PORT}`);
+  console.log(`  Website with live posture demo: http://localhost:${HTTP_PORT}/site/`);
   console.log(`  Logging to ${logPath}`);
 });

@@ -112,6 +112,10 @@ The sensor sends to this laptop's IP (`ipconfig getifaddr en0`) on port 5005. To
 node hub/simulate.mjs
 ```
 
+### Website with a live posture demo
+
+The hub also serves the project website at http://localhost:8090/site/. When opened from the hub, "Try a posture" follows the live sensor: the figure bends as the wearer bends. Click "Live sensor" to pause it and use the slider.
+
 ## Pitch (20 seconds)
 
 A box going up is success. A person going up with a 60-degree neck bend is failure. We measure both the carer's injury risk and the patient's neck alignment. This trial uses a third-person camera; the product uses a sensor suit and first-person video.
