@@ -30,6 +30,7 @@ from reba import (
     RebaResult,
     score_reba,
 )
+from hub_bridge import HubBridge
 
 POSE_CONNECTIONS = (
     (11, 12),
@@ -1210,7 +1211,8 @@ def demo_phase(elapsed: float) -> tuple[str, RebaAngles, int, str, int, bool | N
     return "squat", SQUAT_CLOSE, 0, "TAKE 3  —  human, head up", 2, True, "up"
 
 
-def run_demo(record_path: str | None) -> None:
+def run_demo(record_path: str | None, hub: HubBridge | None = None) -> None:
+    hub = hub or HubBridge(None)
     w, h = 900, 720
     output_w, output_h = STAGE_W, STAGE_H
     writer = None
@@ -1262,6 +1264,16 @@ def run_demo(record_path: str | None) -> None:
             carer_trunk_deg=angles.trunk_flex_deg,
             people_count=people_count,
             demo_mode="box" if extra == "box" else "human",
+        )
+        hub.send(
+            mode="box" if extra == "box" else "human",
+            carer_trunk_deg=angles.trunk_flex_deg,
+            reba_score=result.score,
+            reba_band=result.band,
+            patient_neck_deg=68.0 if extra == "drop" else 14.0 if extra == "up" else None,
+            patient_neck_status="danger" if extra == "drop" else "safe" if extra == "up" else None,
+            patient_head_ok=head_ok,
+            people=people_count,
         )
 
         if writer is not None:
@@ -1641,7 +1653,8 @@ def run_video(path: str, record_path: str | None) -> None:
         cv2.destroyAllWindows()
 
 
-def run_camera(camera: int, record_path: str | None) -> None:
+def run_camera(camera: int, record_path: str | None, hub: HubBridge | None = None) -> None:
+    hub = hub or HubBridge(None)
     cameras = discover_cameras()
     indices = [i for i, _ in cameras] or [camera]
     cap = open_camera(camera)
@@ -1734,6 +1747,16 @@ def run_camera(camera: int, record_path: str | None) -> None:
                     people_count=people_count,
                     demo_mode=demo_mode,
                 )
+                hub.send(
+                    mode=demo_mode,
+                    carer_trunk_deg=trunk_deg,
+                    reba_score=result.score if result is not None else None,
+                    reba_band=result.band if result is not None else None,
+                    patient_neck_deg=neck_deg,
+                    patient_neck_status=neck_status,
+                    patient_head_ok=patient_flag,
+                    people=people_count,
+                )
 
             if record_path and writer is None and cap is not None:
                 fourcc = cv2.VideoWriter_fourcc(*"mp4v")
@@ -1811,9 +1834,12 @@ def main() -> None:
     parser.add_argument("--list-cameras", action="store_true", help="Print cameras and exit")
     parser.add_argument("--video", metavar="PATH", help="Score a video file instead of a camera")
     parser.add_argument("--record", metavar="PATH", help="Save mp4 (demo writes one 16s loop)")
+    parser.add_argument("--hub", default="127.0.0.1:5005", metavar="HOST:PORT", help="Send angles to the Careier hub over UDP")
+    parser.add_argument("--no-hub", action="store_true", help="Don't send angles to the hub")
     args = parser.parse_args()
+    hub = HubBridge(None if args.no_hub else args.hub)
     if args.demo:
-        run_demo(args.record)
+        run_demo(args.record, hub)
         return
     if args.video:
         run_video(args.video, args.record)
@@ -1828,7 +1854,7 @@ def main() -> None:
         camera = args.camera
     else:
         camera = pick_camera(cameras)
-    run_camera(camera, args.record)
+    run_camera(camera, args.record, hub)
 
 
 if __name__ == "__main__":

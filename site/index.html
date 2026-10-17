@@ -1,0 +1,636 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Careier</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600&family=Instrument+Serif:ital@1&family=Doto:wght@600;800&family=Geist+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: soft framed "canvas" panels on a pale ground, like product pages for consumer hardware.
+   One huge wordmark with the vest render sitting in it; glass cards and dot-matrix numerals for data. */
+:root {
+  --ground: #e9e9e6;
+  --canvas: #f6f6f3;
+  --card: #ffffff;
+  --glass: rgba(255, 255, 255, 0.66);
+  --ink: #18181a;
+  --ink-2: #3c3c40;
+  --muted: #8c8c91;
+  --line: rgba(20, 20, 30, 0.08);
+  --accent: #2f6bff;
+  --accent-ink: #ffffff;
+  --lime: #dcf05a;
+  --lime-ink: #1d2405;
+  --good: #22a861;
+  --warn: #ee9327;
+  --bad: #f2554a;
+  --good-soft: #e3f5ea;
+  --warn-soft: #fdf0de;
+  --bad-soft: #fde6e4;
+  --device: #121214;
+  --shadow: 0 1px 2px rgba(0,0,0,.04), 0 12px 40px -12px rgba(20, 20, 40, .18);
+  --sans: "Instrument Sans", "Helvetica Neue", system-ui, sans-serif;
+  --serif: "Instrument Serif", "Iowan Old Style", Georgia, serif;
+  --dots: "Doto", "Geist Mono", ui-monospace, monospace;
+  --mono: "Geist Mono", ui-monospace, "SF Mono", Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --ground: #08090b; --canvas: #111215; --card: #191a1e; --glass: rgba(30, 31, 36, 0.66);
+    --ink: #f3f3f0; --ink-2: #c9c9cc; --muted: #85868c; --line: rgba(255,255,255,.08);
+    --accent: #6d98ff; --accent-ink: #07101f; --lime: #d6ec4f; --lime-ink: #1d2405;
+    --good: #48c983; --warn: #f3a645; --bad: #ff6d62;
+    --good-soft: #13281c; --warn-soft: #2e2212; --bad-soft: #321615; --device: #000000;
+    --shadow: 0 1px 2px rgba(0,0,0,.4), 0 16px 40px -12px rgba(0,0,0,.6);
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --ground: #08090b; --canvas: #111215; --card: #191a1e; --glass: rgba(30, 31, 36, 0.66);
+  --ink: #f3f3f0; --ink-2: #c9c9cc; --muted: #85868c; --line: rgba(255,255,255,.08);
+  --accent: #6d98ff; --accent-ink: #07101f; --lime: #d6ec4f; --lime-ink: #1d2405;
+  --good: #48c983; --warn: #f3a645; --bad: #ff6d62;
+  --good-soft: #13281c; --warn-soft: #2e2212; --bad-soft: #321615; --device: #000000;
+  --shadow: 0 1px 2px rgba(0,0,0,.4), 0 16px 40px -12px rgba(0,0,0,.6);
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+@media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } *, *::before { animation: none !important; transition: none !important; } }
+body { background: var(--ground); color: var(--ink); font: 400 16px/1.55 var(--sans); -webkit-font-smoothing: antialiased; }
+a { color: inherit; }
+a:focus-visible, button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; border-radius: 8px; }
+h1, h2, h3 { margin: 0; font-weight: 500; letter-spacing: -0.025em; text-wrap: balance; line-height: 1.08; }
+h2 { font-size: clamp(1.8rem, 3.8vw, 3rem); }
+h3 { font-size: 1.1rem; letter-spacing: -0.01em; }
+p { margin: 0; }
+.page { padding-left: max(12px, env(safe-area-inset-left, 0px)); padding-right: max(12px, env(safe-area-inset-right, 0px)); padding-block: 12px 24px; display: flex; flex-direction: column; gap: 12px; max-width: 1360px; margin: 0 auto; }
+.panel { background: var(--canvas); border-radius: 28px; overflow: hidden; }
+.inner { padding: clamp(28px, 5vw, 72px) clamp(20px, 5vw, 72px); }
+.kicker { font: 500 0.78rem var(--sans); color: var(--accent); letter-spacing: 0.01em; }
+.aside { font: italic 1.05rem var(--serif); color: var(--muted); }
+.lead { font-size: clamp(1.05rem, 1.6vw, 1.25rem); color: var(--ink-2); max-width: 46ch; }
+.muted { color: var(--muted); }
+.small { font-size: 0.86rem; }
+.mono { font-family: var(--mono); }
+.dots { font-family: var(--dots); font-weight: 800; letter-spacing: 0.02em; font-variant-numeric: tabular-nums; }
+sup a { text-decoration: none; color: var(--muted); font: 0.68em var(--mono); }
+.stack { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+.pillbtn { display: inline-flex; align-items: center; gap: 8px; font: 500 0.9rem var(--sans); padding: 10px 18px; border-radius: 99px; border: 0; text-decoration: none; cursor: pointer; }
+.pillbtn.dark { background: var(--ink); color: var(--canvas); box-shadow: 0 8px 20px -8px rgba(0,0,0,.45); }
+.pillbtn.blue { background: var(--accent); color: var(--accent-ink); box-shadow: 0 10px 24px -10px var(--accent); }
+.tag { display: inline-flex; align-items: center; font: 500 0.7rem var(--sans); padding: 3px 9px; border-radius: 99px; background: var(--lime); color: var(--lime-ink); white-space: nowrap; }
+.tag.ghost { background: var(--line); color: var(--muted); }
+.tag.good { background: var(--good-soft); color: var(--good); }
+.tag.warn { background: var(--warn-soft); color: var(--warn); }
+.tag.bad { background: var(--bad-soft); color: var(--bad); }
+.glass { background: var(--glass); backdrop-filter: blur(18px) saturate(1.2); -webkit-backdrop-filter: blur(18px) saturate(1.2); border: 1px solid var(--line); border-radius: 22px; box-shadow: var(--shadow); }
+.card { background: var(--card); border-radius: 22px; border: 1px solid var(--line); padding: 20px; min-width: 0; }
+
+/* nav */
+.nav { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 18px clamp(20px, 3vw, 32px); }
+.logo { font: 600 1.15rem var(--sans); letter-spacing: -0.03em; text-decoration: none; }
+.logo span { color: var(--accent); }
+.nav ul { display: flex; gap: 26px; list-style: none; margin: 0; padding: 0; font-size: 0.88rem; }
+.nav ul a { text-decoration: none; color: var(--ink-2); }
+.nav ul a:hover { color: var(--ink); }
+@media (max-width: 860px) { .nav ul { display: none; } }
+
+/* hero */
+.hero { position: relative; padding: clamp(36px, 6vw, 70px) 16px clamp(40px, 6vw, 72px); display: flex; flex-direction: column; align-items: center; text-align: center; gap: 22px; }
+.hero .aside { display: flex; align-items: center; gap: 10px; }
+.hero .aside::before, .hero .aside::after { content: ""; width: 18px; height: 1px; background: var(--muted); }
+.wordmark { position: relative; display: grid; place-items: center; width: 100%; }
+.wordmark h1 { font-size: clamp(4.6rem, 19vw, 15.5rem); font-weight: 500; letter-spacing: -0.065em; line-height: 0.9; color: var(--ink); }
+.wordmark h1 .gap { display: inline-block; width: 0.06em; }
+.pod { position: absolute; width: clamp(110px, 17vw, 210px); aspect-ratio: 4 / 5; border-radius: clamp(20px, 3vw, 34px); overflow: hidden; box-shadow: 0 30px 60px -20px rgba(10, 20, 60, .45), 0 0 0 1px var(--line); background: #dfe3ea; animation: float 6s ease-in-out infinite; }
+.pod img { width: 100%; height: 100%; object-fit: cover; object-position: 50% 28%; display: block; }
+.pod::after { content: ""; position: absolute; inset: auto 0 0 0; height: 40%; background: linear-gradient(transparent, rgba(47,107,255,.18)); }
+@keyframes float { 50% { transform: translateY(-8px); } }
+.hero .lead { text-align: center; margin: 0 auto; max-width: 38ch; color: var(--ink-2); }
+.chain { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px; font-size: 0.8rem; }
+.chain span { padding: 6px 12px; border-radius: 99px; background: var(--card); border: 1px solid var(--line); color: var(--ink-2); }
+.chain span.on { background: var(--ink); color: var(--canvas); border-color: var(--ink); }
+
+/* split panel */
+.split { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); min-height: 520px; }
+.split .media { position: relative; margin: 12px; border-radius: 22px; overflow: hidden; min-height: 340px; }
+.split .media img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.split .copy { display: flex; flex-direction: column; justify-content: center; align-items: center; text-align: center; gap: 14px; padding: 40px clamp(20px, 5vw, 64px); }
+.split .copy p.big { font-size: clamp(1.25rem, 2.2vw, 1.75rem); line-height: 1.35; letter-spacing: -0.015em; max-width: 26ch; text-wrap: balance; }
+@media (max-width: 860px) { .split { grid-template-columns: 1fr; } }
+
+/* stats */
+.stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin-top: 36px; }
+.stat { padding: 22px; display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.stat b { font-size: clamp(2.2rem, 4.4vw, 3.4rem); line-height: 1; }
+.stat span { font-size: 0.86rem; color: var(--muted); }
+@media (max-width: 860px) { .stats { grid-template-columns: 1fr 1fr; } }
+.problem { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 40px; align-items: end; }
+@media (max-width: 860px) { .problem { grid-template-columns: 1fr; gap: 20px; } }
+
+/* vest */
+.vest { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr); gap: 16px; margin-top: 36px; }
+@media (max-width: 860px) { .vest { grid-template-columns: 1fr; } }
+.renders { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.renders figure { margin: 0; border-radius: 22px; overflow: hidden; background: #dfe3ea; position: relative; }
+.renders img { display: block; width: 100%; height: 100%; aspect-ratio: 4 / 5; object-fit: cover; max-width: 100%; }
+.renders figcaption { position: absolute; left: 12px; bottom: 12px; font-size: 0.72rem; padding: 4px 10px; border-radius: 99px; background: rgba(255,255,255,.8); color: #18181a; backdrop-filter: blur(8px); }
+.spec { display: grid; grid-template-columns: 96px minmax(0, 1fr); gap: 10px 14px; margin: 0; font-size: 0.92rem; }
+.spec dt { color: var(--muted); font-size: 0.82rem; padding-top: 1px; }
+.spec dd { margin: 0; }
+.steps { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin-top: 12px; }
+.step { display: flex; flex-direction: column; gap: 8px; padding: 18px; }
+.step .n { font: 500 0.72rem var(--mono); color: var(--muted); }
+@media (max-width: 860px) { .steps { grid-template-columns: 1fr 1fr; } }
+@media (max-width: 460px) { .steps { grid-template-columns: 1fr; } }
+.chart { width: 100%; height: auto; display: block; }
+.chart text { fill: var(--muted); font: 10.5px var(--mono); }
+.legend { display: flex; gap: 14px; font-size: 0.76rem; color: var(--muted); flex-wrap: wrap; }
+.legend i { display: inline-block; width: 12px; height: 3px; border-radius: 2px; margin-right: 6px; vertical-align: middle; }
+.rowhead { display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; }
+
+/* lab */
+.lab { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr); gap: 12px; margin-top: 36px; }
+@media (max-width: 860px) { .lab { grid-template-columns: 1fr; } }
+.figure-svg { width: 100%; height: auto; display: block; }
+input[type=range] { width: 100%; accent-color: var(--accent); }
+.toggles { display: flex; gap: 8px; flex-wrap: wrap; }
+.toggle { font: 500 0.85rem var(--sans); padding: 8px 14px; border-radius: 99px; border: 1px solid var(--line); background: var(--card); color: var(--ink); cursor: pointer; }
+.toggle[aria-pressed="true"] { background: var(--ink); color: var(--canvas); border-color: var(--ink); }
+.blob { position: relative; border-radius: 22px; overflow: hidden; min-height: 220px; color: #fff; padding: 22px; display: flex; flex-direction: column; justify-content: space-between; isolation: isolate; transition: background .4s; }
+.blob::before { content: ""; position: absolute; inset: -30%; z-index: -1; filter: blur(40px); background: var(--blob, radial-gradient(circle at 30% 70%, #2fd07a, transparent 55%), radial-gradient(circle at 70% 30%, #c9f15a, transparent 55%), #63c98a); transition: background .4s; }
+.blob .label { font-size: 0.82rem; opacity: .85; }
+.blob .val { font-size: clamp(3.4rem, 7vw, 5rem); line-height: 1; text-align: center; }
+.blob .sub { text-align: center; font-size: 0.85rem; opacity: .9; }
+.blob.good { --blob: radial-gradient(circle at 25% 75%, #1fbf6a, transparent 55%), radial-gradient(circle at 75% 25%, #d4f05a, transparent 55%), #5cc98a; }
+.blob.warn { --blob: radial-gradient(circle at 25% 75%, #ff9c2a, transparent 55%), radial-gradient(circle at 75% 25%, #ffd36a, transparent 55%), #f3b153; }
+.blob.bad { --blob: radial-gradient(circle at 25% 75%, #ff4b3e, transparent 55%), radial-gradient(circle at 75% 25%, #ff9a6b, transparent 55%), #f26b55; }
+.readout { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; }
+.readout div { padding: 14px; border-radius: 16px; background: var(--card); border: 1px solid var(--line); display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.readout span { font-size: 0.74rem; color: var(--muted); }
+.readout b { font: 500 1rem var(--mono); }
+.table-wrap { overflow-x: auto; margin-top: 12px; border-radius: 22px; background: var(--card); border: 1px solid var(--line); }
+table { border-collapse: collapse; width: 100%; min-width: 640px; font-size: 0.88rem; }
+th, td { text-align: left; padding: 14px 16px; border-bottom: 1px solid var(--line); vertical-align: top; }
+th { font-weight: 500; font-size: 0.76rem; color: var(--muted); }
+tr:last-child td { border-bottom: 0; }
+
+/* not a box */
+.versus { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 12px; margin-top: 36px; }
+@media (max-width: 860px) { .versus { grid-template-columns: 1fr; } }
+.photo { margin: 0; border-radius: 22px; overflow: hidden; position: relative; min-height: 320px; }
+.photo img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.points { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.points .card { display: flex; flex-direction: column; gap: 6px; }
+.points p { font-size: 0.9rem; color: var(--ink-2); }
+@media (max-width: 460px) { .points { grid-template-columns: 1fr; } }
+
+/* model */
+.pipeline { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin-top: 36px; }
+.pipeline .card { display: flex; flex-direction: column; gap: 8px; }
+.pipeline .card.core { background: var(--ink); color: var(--canvas); border-color: var(--ink); }
+.pipeline .card.core .muted { color: color-mix(in srgb, var(--canvas) 65%, transparent); }
+.pipeline .step-n { font: 500 0.72rem var(--mono); color: var(--muted); }
+@media (max-width: 860px) { .pipeline { grid-template-columns: 1fr 1fr; } }
+@media (max-width: 460px) { .pipeline { grid-template-columns: 1fr; } }
+.trace { display: grid; grid-template-columns: minmax(0, 0.85fr) minmax(0, 1.15fr); gap: 12px; margin-top: 12px; }
+@media (max-width: 860px) { .trace { grid-template-columns: 1fr; } }
+pre { margin: 0; overflow-x: auto; font: 0.76rem/1.6 var(--mono); color: var(--ink-2); }
+.think { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+.think li { display: grid; grid-template-columns: 82px minmax(0, 1fr); gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--line); font-size: 0.9rem; }
+.think li:last-child { border-bottom: 0; }
+.think li b { font: 500 0.74rem/1.9 var(--mono); color: var(--muted); }
+.verdict { margin-top: 10px; padding: 16px; border-radius: 16px; background: var(--lime); color: var(--lime-ink); display: flex; flex-direction: column; gap: 4px; font-size: 0.92rem; }
+
+/* roadmap */
+.road { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin-top: 36px; }
+.phase { position: relative; overflow: hidden; display: flex; flex-direction: column; gap: 14px; isolation: isolate; }
+.phase .orb { position: absolute; width: 180px; height: 180px; right: -50px; top: -60px; border-radius: 50%; filter: blur(30px); opacity: .55; z-index: -1; }
+.phase dl { margin: 0; display: grid; grid-template-columns: 64px minmax(0, 1fr); gap: 8px 10px; font-size: 0.86rem; }
+.phase dt { color: var(--muted); font-size: 0.78rem; }
+.phase dd { margin: 0; }
+@media (max-width: 860px) { .road { grid-template-columns: 1fr; } }
+
+/* dashboard device */
+.device { margin-top: 36px; background: var(--device); border-radius: clamp(22px, 3vw, 40px); padding: clamp(8px, 1.2vw, 14px); box-shadow: 0 40px 80px -30px rgba(0,0,0,.5); }
+.screen { background: var(--canvas); border-radius: clamp(14px, 2.2vw, 28px); display: grid; grid-template-columns: 200px minmax(0, 1fr); min-height: 560px; overflow: hidden; }
+.side { padding: 22px 14px; display: flex; flex-direction: column; gap: 6px; border-right: 1px solid var(--line); }
+.side .brand { font: 600 0.95rem var(--sans); letter-spacing: -0.02em; padding: 0 8px 14px; }
+.side button { text-align: left; font: 500 0.85rem var(--sans); padding: 9px 12px; border-radius: 12px; border: 0; background: transparent; color: var(--muted); cursor: pointer; display: flex; justify-content: space-between; align-items: center; }
+.side button[aria-selected="true"] { background: var(--card); color: var(--ink); box-shadow: var(--shadow); }
+.side .promo { margin-top: auto; padding: 14px; border-radius: 16px; background: var(--card); border: 1px solid var(--line); display: flex; flex-direction: column; gap: 6px; font-size: 0.78rem; }
+.main { padding: clamp(16px, 2.4vw, 28px); display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+.main h3.title { font-size: clamp(1.5rem, 2.6vw, 2rem); font-weight: 500; letter-spacing: -0.03em; }
+.kpis { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
+.kpi { display: flex; flex-direction: column; gap: 6px; min-width: 0; padding: 14px; border-radius: 16px; background: var(--card); border: 1px solid var(--line); }
+.kpi .v { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; min-width: 0; }
+.kpi b { font-size: clamp(1.6rem, 2.4vw, 2.2rem); line-height: 1; }
+.kpi span { font-size: 0.76rem; color: var(--muted); }
+.kpi .tag { color: var(--lime-ink); }
+.kpi .tag.ghost { color: var(--muted); }
+@media (max-width: 1100px) { .kpis { grid-template-columns: 1fr 1fr; } }
+.dgrid { display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr); gap: 12px; }
+@media (max-width: 1000px) { .dgrid { grid-template-columns: 1fr; } }
+.scorecards { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.scorecards .blob { min-height: 170px; }
+.hot { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.hot li { display: grid; grid-template-columns: 8px minmax(0, 1fr); gap: 12px; padding: 12px; border-radius: 14px; background: var(--canvas); font-size: 0.85rem; }
+.hot li::before { content: ""; width: 8px; height: 8px; margin-top: 6px; border-radius: 50%; background: var(--sev, var(--warn)); box-shadow: 0 0 0 4px color-mix(in srgb, var(--sev, var(--warn)) 18%, transparent); }
+.hot li.bad { --sev: var(--bad); }
+.hot li.good { --sev: var(--good); }
+.hot .act { color: var(--muted); font-size: 0.8rem; margin-top: 2px; }
+.bars { display: flex; flex-direction: column; gap: 12px; }
+.bar-row { display: grid; grid-template-columns: 118px minmax(0, 1fr) 40px; gap: 10px; align-items: center; font-size: 0.84rem; }
+.bar-track { height: 8px; border-radius: 99px; background: var(--line); overflow: hidden; display: flex; }
+.bar-track i { display: block; height: 100%; }
+.devices { display: grid; grid-template-columns: repeat(auto-fill, minmax(118px, 1fr)); gap: 8px; }
+.dev { padding: 10px 12px; border-radius: 14px; background: var(--canvas); display: flex; flex-direction: column; gap: 5px; font-size: 0.78rem; }
+.dev b { font: 500 0.8rem var(--mono); }
+@media (max-width: 760px) {
+  .screen { grid-template-columns: 1fr; }
+  .side { flex-direction: row; overflow-x: auto; border-right: 0; border-bottom: 1px solid var(--line); padding: 12px; }
+  .side .brand, .side .promo { display: none; }
+  .side button { white-space: nowrap; }
+}
+
+/* storyboard + privacy + footer */
+.story { margin-top: 36px; border-radius: 22px; overflow: hidden; }
+.story img { display: block; width: 100%; height: auto; max-width: 100%; }
+.privacy { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 12px; margin-top: 36px; }
+@media (max-width: 860px) { .privacy { grid-template-columns: 1fr; } }
+.checks { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 14px; }
+.checks li { display: grid; grid-template-columns: 22px minmax(0, 1fr); gap: 10px; font-size: 0.92rem; }
+.checks li::before { content: "✓"; width: 22px; height: 22px; border-radius: 50%; background: var(--lime); color: var(--lime-ink); display: grid; place-items: center; font-size: 0.72rem; font-weight: 600; }
+.sources { font-size: 0.8rem; color: var(--muted); columns: 2 300px; column-gap: 32px; padding-left: 18px; margin: 14px 0 0; }
+.sources li { break-inside: avoid; margin-bottom: 6px; }
+.sources a { color: var(--ink-2); }
+.foot { display: flex; justify-content: space-between; align-items: flex-end; gap: 20px; flex-wrap: wrap; }
+.foot .mark { font-size: clamp(3rem, 10vw, 7rem); font-weight: 500; letter-spacing: -0.06em; line-height: 0.9; }
+/* lean layout */
+.sec-head { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; flex-wrap: wrap; margin-bottom: 24px; }
+.sec-head h2 { font-size: clamp(1.6rem, 3vw, 2.4rem); }
+.video { border-radius: 22px; overflow: hidden; background: #000; box-shadow: var(--shadow); }
+.video video { display: block; width: 100%; height: auto; max-width: 100%; aspect-ratio: 16 / 9; background: #000; }
+.gallery { display: grid; grid-template-columns: 1fr 1fr 1.6fr; gap: 12px; }
+.gallery figure { margin: 0; border-radius: 22px; overflow: hidden; background: #dfe3ea; min-height: 300px; position: relative; }
+.gallery img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+@media (max-width: 860px) { .gallery { grid-template-columns: 1fr 1fr; } .gallery figure:last-child { grid-column: span 2; } }
+.lab { margin-top: 0; }
+.device { margin-top: 0; }
+.live-pill { border: 0; cursor: pointer; font: 500 0.75rem var(--sans); padding: 5px 12px; }
+.live-pill.on { background: var(--good-soft); color: var(--good); }
+.live-pill.on::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--good); margin-right: 7px; animation: pulse 1.2s ease-in-out infinite; }
+@keyframes pulse { 50% { opacity: .3; } }
+</style>
+
+<div class="page" id="top">
+
+  <section class="panel">
+    <nav class="nav" aria-label="Sections">
+      <a class="logo" href="#top">careier<span>.</span></a>
+      <ul>
+        <li><a href="#watch">Watch</a></li>
+        <li><a href="#try">Try it</a></li>
+        <li><a href="#dashboard">Dashboard</a></li>
+      </ul>
+      <a class="pillbtn dark" href="#watch">Watch the demo</a>
+    </nav>
+    <div class="hero">
+      <span class="aside">Now sensing</span>
+      <div class="wordmark">
+        <h1 aria-label="careier">care<span class="gap"></span>ier</h1>
+        <div class="pod"><img src="img/garment.jpg" alt="The Careier sensor vest on a mannequin, with a small motion pod on the chest" width="1280" height="1600"></div>
+      </div>
+      <p class="lead">A vest that protects carers' backs on every lift, and turns care work into the data care robots will learn from.</p>
+      <div class="chain" aria-label="Roadmap"><span class="on">Data collection</span><span>Assistive tech</span><span>Autonomous care robots</span></div>
+    </div>
+  </section>
+
+  <section class="panel" id="watch">
+    <div class="inner">
+      <div class="sec-head"><h2>Watch it work</h2><span class="aside">Box, bad lift, good lift</span></div>
+      <div class="video">
+        <video src="media/demo.mp4#t=0.5" controls playsinline preload="metadata" aria-label="Careier camera coach demo: a box lift, a person lifted with the head dropping, then a person lifted with the head supported"></video>
+      </div>
+    </div>
+  </section>
+
+  <section class="panel" id="try">
+    <div class="inner">
+      <div class="sec-head"><h2>Try a posture</h2><span class="rowhead" style="gap:10px"><span class="aside">Beeps above 60°, or when you twist</span><button class="tag ghost live-pill" id="livePill" type="button" hidden>Live sensor: waiting</button></span></div>
+      <div class="lab">
+        <div class="card stack">
+          <svg class="figure-svg" id="figure" viewBox="0 0 400 320" role="img" aria-label="Side view of a carer bending forward, with the sensor pod on the chest"></svg>
+          <label for="flex" class="stack" style="gap:6px"><span class="rowhead"><span class="small">Trunk bend</span><span class="mono small" id="flexVal">35°</span></span>
+            <input type="range" id="flex" min="0" max="90" value="35" step="1">
+          </label>
+          <div class="toggles">
+            <button class="toggle" id="knees" aria-pressed="false" type="button">Bent knees</button>
+            <button class="toggle" id="twist" aria-pressed="false" type="button">Twisting</button>
+          </div>
+        </div>
+        <div class="stack">
+          <div class="blob good" id="strainCard" style="flex:1">
+            <div class="rowhead"><span class="label">Strain on the back</span><span class="label" id="zoneTitle">Neutral</span></div>
+            <div class="val dots" id="strain">0</div>
+            <div class="sub" id="buzzLine">No beep</div>
+          </div>
+          <div class="readout">
+            <div><span>REBA trunk</span><b id="reba">3</b></div>
+            <div><span>ISO max hold</span><b id="hold">–</b></div>
+            <div><span>Feedback</span><b id="buzz">none</b></div>
+          </div>
+          <p class="small muted" id="zoneNote" hidden></p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="panel" id="dashboard">
+    <div class="inner">
+      <div class="sec-head"><h2>The care home dashboard</h2><span class="aside">Sample data</span></div>
+      <div class="device">
+        <div class="screen">
+          <div class="side" role="tablist" aria-label="Dashboard view">
+            <div class="brand">careier<span style="color:var(--accent)">.</span></div>
+            <button role="tab" id="tabManager" aria-selected="true" aria-controls="viewManager" type="button">Home overview</button>
+            <button role="tab" id="tabShift" aria-selected="false" aria-controls="viewShift" type="button">My shift</button>
+          </div>
+
+          <div class="main" id="viewManager" role="tabpanel" aria-labelledby="tabManager">
+            <div class="rowhead"><h3 class="title">Willow House</h3><span class="tag ghost">Last 7 days</span></div>
+            <div class="kpis">
+              <div class="kpi"><div class="v"><b class="dots">1284</b></div><span>transfers</span></div>
+              <div class="kpi"><div class="v"><b class="dots">68</b><span class="tag">+9</span></div><span>average score</span></div>
+              <div class="kpi"><div class="v"><b class="dots">11%</b></div><span>high strain</span></div>
+              <div class="kpi"><div class="v"><b class="dots">14</b></div><span>pods in use</span></div>
+            </div>
+            <div class="dgrid">
+              <div class="stack" style="gap:12px">
+                <div class="scorecards">
+                  <div class="blob good"><span class="label">Day shift</span><div class="val dots">74</div><div class="sub">On track</div></div>
+                  <div class="blob warn"><span class="label">Night shift</span><div class="val dots">54</div><div class="sub">Needs attention</div></div>
+                </div>
+                <div class="card stack" style="gap:8px">
+                  <div class="rowhead"><h3>High-strain lifts by hour</h3></div>
+                  <svg class="chart" id="hourChart" viewBox="0 0 560 200" role="img" aria-label="Share of high-strain transfers by hour, highest between 2am and 6am"></svg>
+                </div>
+              </div>
+              <div class="card stack" style="gap:10px">
+                <div class="rowhead"><h3>Care-ER suggests</h3></div>
+                <ul class="hot">
+                  <li class="bad"><div><b>Room 12 · nights</b><div class="act">Transfers getting harder. Ask for a mobility reassessment.</div></div></li>
+                  <li><div><b>Bathroom 2</b><div class="act">Too tight to step round. Check grab rails.</div></div></li>
+                  <li class="good"><div><b>Lounge</b><div class="act">Up 14 since the hoist went in.</div></div></li>
+                </ul>
+              </div>
+            </div>
+          </div>
+
+          <div class="main" id="viewShift" role="tabpanel" aria-labelledby="tabShift" hidden>
+            <div class="rowhead"><h3 class="title">Your shift</h3><span class="tag ghost">Only you see this</span></div>
+            <div class="kpis">
+              <div class="kpi"><div class="v"><b class="dots">23</b></div><span>transfers</span></div>
+              <div class="kpi"><div class="v"><b class="dots">74</b><span class="tag">+6</span></div><span>your score</span></div>
+              <div class="kpi"><div class="v"><b class="dots">4</b></div><span>beeps</span></div>
+              <div class="kpi"><div class="v"><b class="dots">6m</b></div><span>long bends</span></div>
+            </div>
+            <div class="dgrid">
+              <div class="card stack" style="gap:8px">
+                <div class="rowhead"><h3>Score per lift</h3></div>
+                <svg class="chart" id="shiftChart" viewBox="0 0 560 200" role="img" aria-label="Score for each of 23 transfers during the shift"></svg>
+              </div>
+              <div class="blob warn" style="min-height:220px">
+                <span class="label">Tomorrow</span>
+                <div class="val dots" style="font-size:3rem">52</div>
+                <div class="sub">Toilet transfers. Step your feet round instead of turning at the waist.</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="panel">
+    <div class="inner">
+      <div class="gallery">
+        <figure><img src="img/garment.jpg" alt="Sensor vest, three-quarter view" width="1280" height="1600" loading="lazy"></figure>
+        <figure><img src="img/sensor.jpg" alt="Sensor vest from the front, with chest pod and side straps" width="1280" height="1600" loading="lazy"></figure>
+        <figure><img src="img/bedside.jpg" alt="Two carers wearing sensor vests help an older woman sit up in bed" width="1600" height="1200" loading="lazy"></figure>
+      </div>
+    </div>
+  </section>
+
+  <footer class="panel">
+    <div class="inner foot">
+      <div class="mark">careier<span style="color:var(--accent)">.</span></div>
+      <span class="aside">Physical AI Hack · London · 17 October 2026</span>
+    </div>
+  </footer>
+</div>
+
+<script>
+(() => {
+  const $ = (id) => document.getElementById(id);
+  const NS = "http://www.w3.org/2000/svg";
+  const css = (v) => `var(--${v})`;
+  function el(tag, attrs, parent) {
+    const e = document.createElementNS(NS, tag);
+    for (const k in attrs) e.setAttribute(k, attrs[k]);
+    if (parent) parent.appendChild(e);
+    return e;
+  }
+
+  // ---------- example trace ----------
+  (function trace() {
+    const svg = $("heroTrace"); if (!svg) return;
+    const W = 420, H = 200, L = 34, R = 10, T = 12, B = 26;
+    const x = (s) => L + (s / 6.1) * (W - L - R);
+    const y = (d) => T + (1 - d / 80) * (H - T - B);
+    el("rect", { x: L, y: y(80), width: W - L - R, height: y(60) - y(80), fill: css("bad-soft"), rx: 6 }, svg);
+    for (const d of [0, 20, 60]) {
+      el("line", { x1: L, x2: W - R, y1: y(d), y2: y(d), stroke: css("line"), "stroke-dasharray": d ? "3 4" : "" }, svg);
+      el("text", { x: L - 6, y: y(d) + 4, "text-anchor": "end" }, svg).textContent = d + "°";
+    }
+    for (const s of [0, 2, 4, 6]) el("text", { x: x(s), y: H - 6, "text-anchor": "middle" }, svg).textContent = s + "s";
+    const flex = (t) => t < 1.4 ? 8 + t * 30 : t < 3.2 ? 50 + 14 * Math.sin((t - 1.4) / 1.8 * Math.PI) : t < 4.6 ? 40 - (t - 3.2) * 10 : Math.max(4, 26 - (t - 4.6) * 15);
+    const round = (t) => Math.max(2, flex(t) * 0.5 - 2);
+    const pts = (f) => Array.from({ length: 62 }, (_, i) => { const t = i / 10; return `${x(t).toFixed(1)},${y(f(t)).toFixed(1)}`; }).join(" ");
+    const area = `${x(0)},${y(0)} ${pts(flex)} ${x(6.1)},${y(0)}`;
+    const grad = el("linearGradient", { id: "tg", x1: 0, x2: 0, y1: 0, y2: 1 }, el("defs", {}, svg));
+    el("stop", { offset: "0", "stop-color": css("accent"), "stop-opacity": ".25" }, grad);
+    el("stop", { offset: "1", "stop-color": css("accent"), "stop-opacity": "0" }, grad);
+    el("polygon", { points: area, fill: "url(#tg)" }, svg);
+    el("polyline", { points: pts(round), fill: "none", stroke: css("muted"), "stroke-width": 1.5, "stroke-dasharray": "4 4" }, svg);
+    el("polyline", { points: pts(flex), fill: "none", stroke: css("accent"), "stroke-width": 2.5, "stroke-linejoin": "round", "stroke-linecap": "round" }, svg);
+    const bt = 2.3;
+    el("circle", { cx: x(bt), cy: y(flex(bt)), r: 9, fill: css("bad"), opacity: .2 }, svg);
+    el("circle", { cx: x(bt), cy: y(flex(bt)), r: 4.5, fill: css("bad") }, svg);
+    el("text", { x: x(bt) + 12, y: y(flex(bt)) - 6, style: "fill:var(--bad)" }, svg).textContent = "beep · 64°";
+  })();
+
+  // ---------- posture lab ----------
+  const fig = $("figure");
+  const state = { flex: 35, knees: false, twist: false };
+  function drawFigure() {
+    fig.innerHTML = "";
+    const ground = 292, shin = 70, thigh = 72, torso = 104;
+    const kb = state.knees ? 75 : 4;
+    const a = (kb / 2) * Math.PI / 180;
+    const ankle = { x: 170, y: ground };
+    const knee = { x: ankle.x + shin * Math.sin(a), y: ankle.y - shin * Math.cos(a) };
+    const hip = { x: knee.x - thigh * Math.sin(a), y: knee.y - thigh * Math.cos(a) };
+    const f = state.flex * Math.PI / 180;
+    const sh = { x: hip.x + torso * Math.sin(f), y: hip.y - torso * Math.cos(f) };
+    const head = { x: hip.x + (torso + 26) * Math.sin(f), y: hip.y - (torso + 26) * Math.cos(f) };
+    const elbow = { x: sh.x + 4, y: sh.y + 38 }, hand = { x: sh.x + 16, y: sh.y + 74 };
+    const zone = state.flex > 60 ? "bad" : state.flex >= 20 ? "warn" : "good";
+    el("line", { x1: 40, x2: 380, y1: ground + 6, y2: ground + 6, stroke: css("line"), "stroke-width": 2 }, fig);
+    el("line", { x1: hip.x, y1: hip.y, x2: hip.x, y2: hip.y - 128, stroke: css("line"), "stroke-dasharray": "4 4", "stroke-width": 1.5 }, fig);
+    for (const g of [20, 60]) {
+      const r = g * Math.PI / 180;
+      el("line", { x1: hip.x, y1: hip.y, x2: hip.x + 128 * Math.sin(r), y2: hip.y - 128 * Math.cos(r), stroke: css(g === 60 ? "bad" : "warn"), "stroke-dasharray": "2 5", "stroke-width": 1.5 }, fig);
+      el("text", { x: hip.x + 138 * Math.sin(r), y: hip.y - 138 * Math.cos(r), "font-size": 11, "font-family": "var(--mono)", fill: css(g === 60 ? "bad" : "warn") }, fig).textContent = g + "°";
+    }
+    const arcR = 44;
+    el("path", { d: `M ${hip.x} ${hip.y - arcR} A ${arcR} ${arcR} 0 0 1 ${hip.x + arcR * Math.sin(f)} ${hip.y - arcR * Math.cos(f)}`, fill: "none", stroke: css(zone), "stroke-width": 3, "stroke-linecap": "round" }, fig);
+    const bone = { stroke: css("ink"), "stroke-width": 10, "stroke-linecap": "round", "stroke-linejoin": "round", fill: "none" };
+    el("polyline", { points: `${ankle.x + 24},${ankle.y} ${ankle.x},${ankle.y} ${knee.x},${knee.y} ${hip.x},${hip.y}`, ...bone }, fig);
+    el("line", { x1: hip.x, y1: hip.y, x2: sh.x, y2: sh.y, ...bone, stroke: css(zone), "stroke-width": 13 }, fig);
+    el("polyline", { points: `${sh.x},${sh.y} ${elbow.x},${elbow.y} ${hand.x},${hand.y}`, ...bone, "stroke-width": 8 }, fig);
+    el("circle", { cx: head.x, cy: head.y, r: 15, fill: css("ink") }, fig);
+    if (state.twist) el("path", { d: `M ${sh.x - 22} ${sh.y - 6} q 22 -18 44 0`, fill: "none", stroke: css("bad"), "stroke-width": 3, "stroke-linecap": "round" }, fig);
+    // chest pod, on the front of the trunk
+    const nx = Math.cos(f), ny = Math.sin(f);
+    const pod = { x: hip.x + 0.72 * torso * Math.sin(f) + nx * 11, y: hip.y - 0.72 * torso * Math.cos(f) + ny * 11 };
+    el("rect", { x: pod.x - 9, y: pod.y - 9, width: 18, height: 18, rx: 5, fill: css("card"), stroke: css("accent"), "stroke-width": 2.5 }, fig);
+    el("circle", { cx: pod.x, cy: pod.y, r: 3, fill: css("accent") }, fig);
+    el("text", { x: pod.x + 16, y: pod.y + 4, "font-size": 11, "font-family": "var(--mono)", fill: css("muted") }, fig).textContent = "pod";
+    el("text", { x: hip.x - 50, y: hip.y - arcR - 6, "font-size": 13, "font-family": "var(--mono)", fill: css(zone) }, fig).textContent = state.flex + "°";
+  }
+  function updateLab() {
+    const f = state.flex;
+    $("flexVal").textContent = f + "°";
+    let reba = f < 5 ? 1 : f <= 20 ? 2 : f <= 60 ? 3 : 4;
+    if (state.twist) reba += 1;
+    $("reba").textContent = reba + (state.twist ? " (+1)" : "");
+    $("hold").textContent = f < 20 ? "no limit" : f > 60 ? "none" : `${Math.round(240 - (f - 20) * 4.5)} s`;
+    const flexLoad = Math.min(1, Math.max(0, (f - 15) / 45));
+    const strain = Math.round(100 * Math.min(1, 0.65 * flexLoad * (state.knees ? 0.6 : 1) + (state.twist ? 0.25 : 0)));
+    $("strain").textContent = strain;
+    let buzz = "none", cls, title, note;
+    if (f > 60) { cls = "bad"; title = "High risk"; buzz = "1 beep"; note = "Over 60° the back carries the load. REBA scores 4 and ISO 11226 treats the posture as not acceptable."; }
+    else if (f >= 20) { cls = "warn"; title = "Caution"; note = state.knees ? "Bent knees with a moderate trunk bend is what a good squat lift looks like." : "Fine for a moment, but ISO 11226 limits how long it can be held."; }
+    else { cls = "good"; title = "Neutral"; note = "Upright or nearly. The pod uses moments like this to recalibrate."; }
+    if (state.twist && f >= 20) { buzz = buzz === "none" ? "2 beeps" : "1 + 2 beeps"; cls = "bad"; title = "Twisting in a lift"; note += " Twisting adds +1 to REBA and triggers the double beep: move your feet."; }
+    $("strainCard").className = "blob " + cls;
+    $("zoneTitle").textContent = title;
+    $("buzzLine").textContent = buzz === "none" ? "No beep" : buzz;
+    $("buzz").textContent = buzz;
+    $("zoneNote").textContent = note;
+    drawFigure();
+  }
+  $("flex").addEventListener("input", (e) => { state.flex = +e.target.value; updateLab(); });
+  for (const id of ["knees", "twist"]) $(id).addEventListener("click", (e) => { state[id] = !state[id]; e.currentTarget.setAttribute("aria-pressed", state[id]); updateLab(); });
+  updateLab();
+
+  // ---------- live mode ----------
+  // When this page is served by the Careier hub (node hub/hub.mjs → /site/), the posture demo follows
+  // the real sensor. Click the pill to pause and use the slider instead.
+  if (location.pathname.startsWith("/site") && "EventSource" in window) {
+    const pill = $("livePill");
+    pill.hidden = false;
+    const FIELDS = ["ax","ay","az","gx","gy","gz","qw","qx","qy","qz","trunk_flexion","lumbar_flexion","side_bend","twist","strain"];
+    let idx = Object.fromEntries(FIELDS.map((f, i) => [f, i]));
+    let lastAt = 0, paused = false, pending = null;
+    const num = (v) => (typeof v === "number" && isFinite(v) ? v : null);
+    const es = new EventSource("/events");
+    es.onmessage = (e) => {
+      let m; try { m = JSON.parse(e.data); } catch { return; }
+      if (m.type === "hello" && Array.isArray(m.fields)) idx = Object.fromEntries(m.fields.map((f, i) => [f, i]));
+      let flex = null, twist = null;
+      if (m.type === "frames" && Array.isArray(m.upper) && m.upper.length) {
+        const row = m.upper.at(-1);
+        flex = num(row[idx.trunk_flexion]); twist = num(row[idx.twist]);
+      } else if (m.type === "frame") {
+        flex = num(m.trunk_flexion); twist = num(m.twist);
+      }
+      if (flex == null) return;
+      lastAt = Date.now();
+      pending = { flex, twist };
+    };
+    const setPill = () => {
+      const live = Date.now() - lastAt < 1500;
+      pill.className = "tag live-pill " + (live && !paused ? "on" : "ghost");
+      pill.textContent = paused ? "Live sensor: paused" : live ? "Live sensor" : "Live sensor: waiting";
+      $("flex").disabled = live && !paused;
+    };
+    setInterval(setPill, 400);
+    pill.addEventListener("click", () => { paused = !paused; setPill(); });
+    (function follow() {
+      if (pending && !paused) {
+        const f = Math.round(Math.min(90, Math.abs(pending.flex)));
+        const t = pending.twist == null ? 0 : Math.abs(pending.twist);
+        state.flex = f;
+        state.twist = f >= 20 && t > 20 && t < 90; // ignore gyro drift readings past 90°
+        $("flex").value = f;
+        $("twist").setAttribute("aria-pressed", state.twist);
+        updateLab();
+        pending = null;
+      }
+      requestAnimationFrame(follow);
+    })();
+  }
+
+  // ---------- dashboard (sample data) ----------
+  const hourly = [22,25,31,34,36,33,27,15,9,8,10,9,8,9,7,8,9,10,11,13,16,18,19,21];
+  (function hourChart() {
+    const svg = $("hourChart");
+    const W = 560, H = 200, L = 32, R = 6, T = 8, B = 22;
+    const bw = (W - L - R) / 24;
+    const y = (v) => T + (1 - v / 40) * (H - T - B);
+    for (const v of [0, 20, 40]) {
+      el("line", { x1: L, x2: W - R, y1: y(v), y2: y(v), stroke: css("line") }, svg);
+      el("text", { x: L - 6, y: y(v) + 4, "text-anchor": "end" }, svg).textContent = v + "%";
+    }
+    hourly.forEach((v, h) => {
+      const night = h >= 20 || h < 8;
+      const r = el("rect", { x: L + h * bw + 3, y: y(v), width: bw - 6, height: y(0) - y(v), rx: (bw - 6) / 2, fill: css(night ? "bad" : "accent") }, svg);
+      el("title", {}, r).textContent = `${String(h).padStart(2, "0")}:00, ${v}% high strain`;
+      if (h % 4 === 0) el("text", { x: L + h * bw + bw / 2, y: H - 6, "text-anchor": "middle" }, svg).textContent = String(h).padStart(2, "0");
+    });
+  })();
+  const types = [["Bed → chair", 312, 52, 30, 18], ["Chair → stand", 401, 71, 21, 8], ["Toilet", 228, 41, 34, 25], ["Reposition", 287, 58, 31, 11], ["Low task", 56, 30, 38, 32]];
+  if ($("typeBars")) $("typeBars").innerHTML = types.map(([name, n, g, w, b]) => `
+    <div class="bar-row"><span>${name}</span>
+      <div class="bar-track" role="img" aria-label="${name}: ${g}% good, ${w}% caution, ${b}% high strain"><i style="width:${g}%;background:var(--good)"></i><i style="width:${w}%;background:var(--warn)"></i><i style="width:${b}%;background:var(--bad)"></i></div>
+      <span class="mono small muted" style="text-align:right">${n}</span></div>`).join("");
+  const devices = [["545afd", "On shift", 64], ["a91f2c", "On shift", 71], ["0b77e1", "Docked", 100], ["c3d410", "On shift", 38], ["7e21aa", "Charging", 82], ["f09b3d", "Upload failed", 100]];
+  if ($("devices")) $("devices").innerHTML = devices.map(([id, st, bat]) => {
+    const cls = st.includes("failed") ? "bad" : st === "Docked" || st === "Charging" ? "good" : bat < 40 ? "warn" : "ghost";
+    return `<div class="dev"><b>${id}</b><span class="tag ${cls}" style="align-self:flex-start">${st}</span><span class="muted">${bat}%</span></div>`;
+  }).join("");
+  (function shiftChart() {
+    const svg = $("shiftChart");
+    const scores = [82,78,85,64,71,88,45,79,83,76,58,81,90,72,49,84,77,80,68,86,74,79,83];
+    const W = 560, H = 200, L = 28, R = 8, T = 10, B = 22;
+    const x = (i) => L + (i / (scores.length - 1)) * (W - L - R);
+    const y = (v) => T + (1 - v / 100) * (H - T - B);
+    el("rect", { x: L, y: y(50), width: W - L - R, height: y(0) - y(50), fill: css("bad-soft"), rx: 6 }, svg);
+    for (const v of [0, 50, 100]) {
+      el("line", { x1: L, x2: W - R, y1: y(v), y2: y(v), stroke: css("line") }, svg);
+      el("text", { x: L - 6, y: y(v) + 4, "text-anchor": "end" }, svg).textContent = v;
+    }
+    el("polyline", { points: scores.map((s, i) => `${x(i)},${y(s)}`).join(" "), fill: "none", stroke: css("line"), "stroke-width": 2 }, svg);
+    scores.forEach((s, i) => el("circle", { cx: x(i), cy: y(s), r: 5, fill: css(s >= 75 ? "good" : s >= 50 ? "warn" : "bad") }, svg));
+    el("text", { x: L, y: H - 4 }, svg).textContent = "07:00";
+    el("text", { x: W - R, y: H - 4, "text-anchor": "end" }, svg).textContent = "19:00";
+  })();
+  const tabs = [["tabManager", "viewManager"], ["tabShift", "viewShift"]];
+  for (const [t, v] of tabs) $(t).addEventListener("click", () => { for (const [t2, v2] of tabs) { $(t2).setAttribute("aria-selected", t2 === t); $(v2).hidden = v2 !== v; } });
+})();
+</script>

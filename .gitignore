@@ -16,3 +16,6 @@ recordings/
 
 # Third-party source clips
 floor-transfer.*
+
+# Hub session logs (raw sensor and camera data)
+hub/data/

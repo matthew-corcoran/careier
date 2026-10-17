@@ -1,0 +1,341 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Careier Capture</title>
+<style>
+:root {
+  --bg: #f3f6f7; --surface: #ffffff; --band: #e6edef; --ink: #13212b; --muted: #566a76; --line: #cfdbe0;
+  --accent: #2f4fd8; --cam: #0f9a8a; --patient: #8a5cf6; --good: #1f9d55; --warn: #c77700; --bad: #d23b3b;
+  --good-soft: #def3e6; --warn-soft: #fbeccf; --bad-soft: #fbe0e0;
+  --mono: ui-monospace, "SF Mono", Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root { --bg: #0d151b; --surface: #16232c; --band: #121d25; --ink: #e5eef2; --muted: #93a7b2; --line: #263741;
+    --accent: #8ea4ff; --cam: #3fd1bd; --patient: #b79bff; --good: #4cc584; --warn: #f0a63a; --bad: #f07272;
+    --good-soft: #143326; --warn-soft: #3a2a10; --bad-soft: #3d1a1c; color-scheme: dark; }
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; }
+header { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; padding: 12px 20px; background: var(--surface); border-bottom: 1px solid var(--line); }
+h1 { margin: 0; font-size: 18px; }
+h2 { margin: 0; font-size: 14px; }
+.pills { display: flex; gap: 6px; flex-wrap: wrap; }
+.pill { font: 600 12px var(--mono); padding: 4px 10px; border-radius: 99px; background: var(--band); color: var(--muted); }
+.pill.good { background: var(--good-soft); color: var(--good); }
+.pill.bad { background: var(--bad-soft); color: var(--bad); }
+.pill.warn { background: var(--warn-soft); color: var(--warn); }
+main { display: grid; grid-template-columns: minmax(0, 2fr) minmax(300px, 1fr); gap: 16px; padding: 16px 20px; }
+@media (max-width: 900px) { main { grid-template-columns: 1fr; } }
+.card { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 16px; min-width: 0; display: flex; flex-direction: column; gap: 10px; }
+.row { display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; }
+canvas { width: 100%; height: 300px; display: block; }
+.now { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; }
+.now div { background: var(--band); border-radius: 10px; padding: 10px 12px; }
+.now span { display: block; font-size: 12px; color: var(--muted); }
+.now b { font: 700 28px var(--mono); font-variant-numeric: tabular-nums; }
+.zone { padding: 12px 14px; border-radius: 10px; font-weight: 700; font-size: 18px; }
+.zone.good { background: var(--good-soft); color: var(--good); }
+.zone.warn { background: var(--warn-soft); color: var(--warn); }
+.zone.bad { background: var(--bad-soft); color: var(--bad); }
+.zone.idle { background: var(--band); color: var(--muted); }
+ol { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; max-height: 360px; overflow: auto; }
+.lift { display: grid; grid-template-columns: 52px minmax(0, 1fr); gap: 10px; align-items: center; padding: 8px; border: 1px solid var(--line); border-radius: 10px; cursor: pointer; }
+.lift.sel { border-color: var(--accent); }
+.score { height: 46px; border-radius: 10px; display: grid; place-items: center; color: #fff; font: 800 18px var(--mono); }
+.meta { font-size: 12px; color: var(--muted); }
+button { font: 600 13px system-ui; padding: 7px 12px; border-radius: 9px; border: 1px solid var(--line); background: var(--surface); color: var(--ink); cursor: pointer; }
+button:hover { border-color: var(--accent); }
+.legend { display: flex; gap: 14px; font-size: 12px; color: var(--muted); flex-wrap: wrap; }
+.legend i { display: inline-block; width: 14px; height: 3px; margin-right: 6px; vertical-align: middle; }
+.cam { aspect-ratio: 16/9; background: var(--band); border-radius: 10px; display: grid; place-items: center; overflow: hidden; color: var(--muted); font-size: 13px; text-align: center; padding: 10px; }
+.cam iframe { width: 100%; height: 100%; border: 0; background: #000; }
+input[type=text] { flex: 1; min-width: 0; font: 13px var(--mono); padding: 7px 10px; border-radius: 9px; border: 1px solid var(--line); background: var(--surface); color: var(--ink); }
+pre { margin: 0; max-height: 180px; overflow: auto; font: 11px/1.5 var(--mono); background: var(--band); padding: 10px; border-radius: 10px; }
+.empty { color: var(--muted); font-size: 13px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Careier Capture</h1>
+  <div class="pills">
+    <span class="pill" id="pConn">Hub: connecting…</span>
+    <span class="pill" id="pSensor">Sensor: no data yet</span>
+    <span class="pill" id="pRate">0 Hz</span>
+    <span class="pill" id="pDrop">0 lost</span>
+    <span class="pill" id="pCal">Not calibrated</span>
+    <span class="pill" id="pCam">Camera: off</span>
+  </div>
+</header>
+<main>
+  <section class="card">
+    <div class="row"><h2>Trunk tilt, last 20 seconds</h2>
+      <div class="legend"><span><i style="background:var(--accent)"></i>Sensor tilt</span><span><i style="background:var(--cam)"></i>Camera trunk</span><span><i style="background:var(--muted)"></i>Twist</span><span><i style="background:var(--bad)"></i>Beep</span></div>
+    </div>
+    <canvas id="chart"></canvas>
+    <div class="now">
+      <div><span>Tilt</span><b id="nFlex">–</b></div>
+      <div><span>Twist</span><b id="nTwist">–</b></div>
+      <div><span>Strain</span><b id="nStrain">–</b></div>
+    </div>
+    <div class="zone idle" id="zone">Waiting for the sensor</div>
+  </section>
+
+  <section class="card">
+    <div class="row"><h2>Lifts</h2><span class="meta" id="liftCount">0 lifts</span></div>
+    <ol id="lifts"><li class="empty">Each lift appears here with its score when the wearer stands back up.</li></ol>
+    <div class="row">
+      <button id="btnCopy" disabled>Copy selected lift for Care-ER</button>
+      <button id="btnClear">Clear</button>
+    </div>
+  </section>
+
+  <section class="card">
+    <div class="row"><h2>Camera coach</h2><span class="meta" id="camMode">run coach.py to connect</span></div>
+    <div class="now">
+      <div><span>Carer trunk (camera)</span><b id="cTrunk">–</b></div>
+      <div><span>REBA</span><b id="cReba">–</b></div>
+      <div><span>Sensor − camera</span><b id="cDiff">–</b></div>
+    </div>
+    <div class="zone idle" id="headZone">Patient head: not visible</div>
+    <p class="meta">The camera checks the sensor's tilt and watches the patient's head, which a carer's sensor can't see. Patient neck: 0–35° aligned, 35–55° caution, over 55° head drop.</p>
+  </section>
+
+  <section class="card">
+    <div class="row"><h2>Raw messages</h2><span class="meta">latest event and frame</span></div>
+    <pre id="raw">–</pre>
+  </section>
+</main>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const WINDOW_MS = 20000;
+const frames = [];          // {t, flex, twist, strain}
+const alerts = [];          // {t, kind}
+const spans = [];           // {start, end}
+const lifts = [];
+let liftOpen = null, selected = null, lastEvent = null, lastFrame = null, frameTimes = [];
+
+const num = (v) => (typeof v === "number" && isFinite(v) ? v : null);
+const pick = (o, ...keys) => { for (const k of keys) if (num(o[k]) != null) return o[k]; return null; };
+const color = (name) => getComputedStyle(document.documentElement).getPropertyValue("--" + name).trim();
+const zoneOf = (f) => (f == null ? "idle" : f > 60 ? "bad" : f >= 20 ? "warn" : "good");
+const scoreColor = (s) => (s == null ? color("muted") : s >= 75 ? color("good") : s >= 50 ? color("warn") : color("bad"));
+
+// The firmware's strain/score are prototype estimates; compute the same formulas here if they arrive null.
+function strainOf(flex, twist) {
+  if (flex == null) return null;
+  const c = (v) => Math.min(1, Math.max(0, v));
+  return Math.round(100 * Math.min(1, 0.75 * c((flex - 15) / 45) + 0.25 * c((Math.abs(twist ?? 0) - 10) / 25)));
+}
+function scoreOf(fr) {
+  const s = fr.map((f) => f.strain).filter((v) => v != null);
+  if (!s.length) return null;
+  const mean = s.reduce((a, b) => a + b, 0) / s.length;
+  const high = s.filter((v) => v > 60).length / s.length;
+  return Math.round(Math.min(100, Math.max(0, 100 - 0.7 * mean - 40 * high)));
+}
+
+function onMessage(m) {
+  const t = m.hub_ms ?? Date.now();
+  if (m.type === "hub_stats") return onStats(m);
+  if (m.source === "camera") return onCamera(m, t);
+  if (m.type === "hello" && Array.isArray(m.fields)) { fieldIdx = Object.fromEntries(m.fields.map((f, i) => [f, i])); }
+  if (m.type === "frames" && Array.isArray(m.upper)) return onFrames(m, t);
+  // The Axiometa firmware sends {type:"lift", phase:"start"|"end", ...}; treat it like lift_start / lift_end.
+  if (m.type === "lift") {
+    m = m.phase === "start"
+      ? { ...m, type: "lift_start" }
+      : { ...m, type: "lift_end", duration_ms: num(m.end_ms) != null && num(m.start_ms) != null ? m.end_ms - m.start_ms : undefined };
+  }
+  if (m.type === "frame" || (m.type == null && "trunk_flexion" in m)) {
+    const flex = pick(m, "trunk_flexion", "tilt", "flexion");
+    const twist = pick(m, "twist");
+    const strain = num(m.strain) ?? strainOf(flex, twist);
+    const f = { t, flex, twist, strain };
+    frames.push(f);
+    frameTimes.push(t);
+    if (liftOpen) liftOpen.frames.push(f);
+    lastFrame = m;
+    if (m.calibrated === true) setCal(true);
+    updateNow(f);
+  } else {
+    lastEvent = m;
+    if (m.type === "calibrated") setCal(true);
+    if (m.type === "alert") alerts.push({ t, kind: m.kind || "alert" });
+    if (m.type === "lift_start") { liftOpen = { start: t, frames: [], alerts: 0 }; spans.push({ start: t, end: null }); }
+    if (m.type === "lift_end") endLift(m, t);
+  }
+  $("raw").textContent = JSON.stringify({ last_event: lastEvent, last_frame: lastFrame }, null, 2);
+}
+
+// Batched sensor packets: {type:"frames", upper:[[...fields]], t_ms_offsets:[...]} with field order from "hello".
+const DEFAULT_FIELDS = ["ax","ay","az","gx","gy","gz","qw","qx","qy","qz","trunk_flexion","lumbar_flexion","side_bend","twist","strain"];
+let fieldIdx = Object.fromEntries(DEFAULT_FIELDS.map((f, i) => [f, i]));
+function onFrames(m, t) {
+  const offs = m.t_ms_offsets || m.upper.map((_, i) => i * (m.dt_ms || 10));
+  const lastOff = offs.at(-1) || 0;
+  m.upper.forEach((row, i) => {
+    const get = (k) => (fieldIdx[k] == null ? null : num(row[fieldIdx[k]]));
+    const raw = get("trunk_flexion");
+    const flex = raw == null ? null : Math.abs(raw);   // tilt magnitude; sign depends on how the firmware defines forward
+    const twist = get("twist");
+    const strain = get("strain") ?? strainOf(flex, twist);
+    const f = { t: t - (lastOff - offs[i]), flex, twist, strain };
+    frames.push(f);
+    frameTimes.push(f.t);
+    if (liftOpen) liftOpen.frames.push(f);
+    updateNow(f);
+  });
+  if (m.calibrated === true) setCal(true);
+  lastFrame = { ...m, upper: [m.upper.at(-1)], note: `${m.upper.length} samples in this packet` };
+  $("raw").textContent = JSON.stringify({ last_event: lastEvent, last_frame: lastFrame }, null, 2);
+}
+
+const cam = [];             // {t, trunk, reba, neck, headOk}
+function onCamera(m, t) {
+  const c = { t, trunk: num(m.carer_trunk_deg), reba: num(m.reba), neck: num(m.patient_neck_deg), headOk: m.patient_head_ok ?? null, mode: m.mode };
+  cam.push(c);
+  while (cam.length && t - cam[0].t > WINDOW_MS + 1000) cam.shift();
+  if (liftOpen) (liftOpen.cam ||= []).push(c);
+  $("camMode").textContent = `${(m.mode || "human").toUpperCase()} mode · ${m.people ?? 0} people`;
+  $("cTrunk").textContent = c.trunk == null ? "–" : Math.round(c.trunk) + "°";
+  $("cReba").textContent = c.reba == null ? "–" : `${c.reba} ${m.reba_band ? m.reba_band.toLowerCase() : ""}`;
+  const s = frames.at(-1);
+  $("cDiff").textContent = s && s.flex != null && c.trunk != null && t - s.t < 500 ? `${Math.round(s.flex - c.trunk)}°` : "–";
+  const hz = $("headZone");
+  if (m.mode === "box") { hz.className = "zone idle"; hz.textContent = "Box lift: no neck to protect"; }
+  else if (c.headOk === true) { hz.className = "zone good"; hz.textContent = `Patient head up · neck ${Math.round(c.neck)}°`; }
+  else if (c.headOk === false) { hz.className = "zone bad"; hz.textContent = `Patient head drop · neck ${Math.round(c.neck)}°`; }
+  else { hz.className = "zone idle"; hz.textContent = "Patient head: not visible"; }
+}
+
+function endLift(m, t) {
+  const open = liftOpen || { start: t - (m.duration_ms || 0), frames: frames.filter((f) => f.t >= t - (m.duration_ms || 0)) };
+  const span = spans.at(-1); if (span && span.end == null) span.end = t; else spans.push({ start: open.start, end: t });
+  const fr = open.frames;
+  const lift = {
+    id: lifts.length + 1,
+    start: open.start, end: t,
+    duration_ms: num(m.duration_ms) ?? t - open.start,
+    peak_tilt: num(m.peak_trunk_flexion) ?? num(m.peak_tilt) ?? Math.round(Math.max(0, ...fr.map((f) => f.flex ?? 0))),
+    peak_twist: num(m.peak_twist) ?? Math.round(Math.max(0, ...fr.map((f) => Math.abs(f.twist ?? 0)))),
+    score: num(m.score) ?? scoreOf(fr),
+    beeps: alerts.filter((a) => a.t >= open.start && a.t <= t).map((a) => a.kind),
+    camera: (() => {
+      const cs = (open.cam || cam.filter((c) => c.t >= open.start && c.t <= t));
+      if (!cs.length) return null;
+      const vals = (k) => cs.map((c) => c[k]).filter((v) => v != null);
+      return {
+        peak_trunk_deg: vals("trunk").length ? Math.round(Math.max(...vals("trunk"))) : null,
+        peak_reba: vals("reba").length ? Math.max(...vals("reba")) : null,
+        peak_patient_neck_deg: vals("neck").length ? Math.round(Math.max(...vals("neck"))) : null,
+        patient_head_drop: cs.some((c) => c.headOk === false),
+      };
+    })(),
+    device_event: m,
+    samples: fr.map((f) => ({ t_ms: f.t - open.start, tilt: f.flex, twist: f.twist, strain: f.strain })),
+  };
+  lifts.push(lift);
+  liftOpen = null;
+  selected = lift.id;
+  renderLifts();
+}
+
+function updateNow(f) {
+  $("nFlex").textContent = f.flex == null ? "–" : Math.round(f.flex) + "°";
+  $("nTwist").textContent = f.twist == null ? "–" : Math.round(f.twist) + "°";
+  $("nStrain").textContent = f.strain ?? "–";
+  const z = zoneOf(f.flex);
+  $("zone").className = "zone " + z;
+  $("zone").textContent = { idle: "Waiting for the sensor", good: "Neutral", warn: "Caution: bending 20–60°", bad: "High risk: over 60°" }[z] + (liftOpen ? " · lifting" : "");
+}
+
+function setCal(on) { const p = $("pCal"); p.textContent = on ? "Calibrated" : "Not calibrated"; p.className = "pill " + (on ? "good" : ""); }
+
+function onStats(s) {
+  const now = Date.now();
+  frameTimes = frameTimes.filter((t) => now - t < 1000);
+  $("pRate").textContent = `${frameTimes.length} Hz` + (s.status?.rssi != null ? ` · Wi-Fi ${s.status.rssi} dBm` : "");
+  $("pDrop").textContent = `${s.dropped} lost`;
+  $("pDrop").className = "pill " + (s.dropped > 0 ? "warn" : "");
+  const live = s.lastAt && now - s.lastAt < 2000;
+  $("pSensor").textContent = live ? `Sensor: ${s.lastFrom}` : s.lastAt ? "Sensor: no data for " + Math.round((now - s.lastAt) / 1000) + "s" : "Sensor: no data yet";
+  $("pSensor").className = "pill " + (live ? "good" : s.lastAt ? "bad" : "");
+  const camLive = s.cameraAt && now - s.cameraAt < 2000;
+  $("pCam").textContent = camLive ? "Camera: live" : s.cameraAt ? "Camera: stopped" : "Camera: off";
+  $("pCam").className = "pill " + (camLive ? "good" : s.cameraAt ? "bad" : "");
+}
+
+function renderLifts() {
+  $("liftCount").textContent = `${lifts.length} lift${lifts.length === 1 ? "" : "s"}`;
+  $("btnCopy").disabled = !selected;
+  if (!lifts.length) { $("lifts").innerHTML = '<li class="empty">Each lift appears here with its score when the wearer stands back up.</li>'; return; }
+  $("lifts").innerHTML = [...lifts].reverse().map((l) => `
+    <li class="lift ${l.id === selected ? "sel" : ""}" data-id="${l.id}">
+      <div class="score" style="background:${scoreColor(l.score)}">${l.score ?? "–"}</div>
+      <div><b>Lift ${l.id}</b> · ${(l.duration_ms / 1000).toFixed(1)}s
+        <div class="meta">Peak tilt ${l.peak_tilt}° · twist ${l.peak_twist}° · ${l.beeps.length ? l.beeps.length + " beep" + (l.beeps.length > 1 ? "s" : "") : "no beeps"}${l.camera ? ` · REBA ${l.camera.peak_reba ?? "–"}${l.camera.patient_head_drop ? ' · <b style="color:var(--bad)">head drop</b>' : ""}` : ""}</div></div>
+    </li>`).join("");
+  for (const li of document.querySelectorAll(".lift")) li.onclick = () => { selected = +li.dataset.id; renderLifts(); };
+}
+
+// ---- chart ----
+const cv = $("chart"), ctx = cv.getContext("2d");
+function draw() {
+  const dpr = devicePixelRatio || 1, W = cv.clientWidth, H = cv.clientHeight;
+  if (cv.width !== W * dpr) { cv.width = W * dpr; cv.height = H * dpr; }
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, W, H);
+  const now = Date.now(), L = 36, R = 8, T = 8, B = 20;
+  const x = (t) => L + (1 - (now - t) / WINDOW_MS) * (W - L - R);
+  const y = (d) => T + (1 - Math.max(-30, Math.min(90, d)) / 90) * (H - T - B);
+  while (frames.length && now - frames[0].t > WINDOW_MS + 1000) frames.shift();
+  // high-risk band and lift spans
+  ctx.fillStyle = color("band");
+  for (const s of spans) { const a = x(s.start), b = x(s.end ?? now); if (b > L) ctx.fillRect(Math.max(L, a), T, b - Math.max(L, a), H - T - B); }
+  ctx.globalAlpha = 0.7; ctx.fillStyle = color("bad-soft"); ctx.fillRect(L, y(90), W - L - R, y(60) - y(90)); ctx.globalAlpha = 1;
+  ctx.font = "11px " + color("mono"); ctx.textAlign = "right";
+  for (const d of [0, 20, 60, 90]) {
+    ctx.strokeStyle = d === 60 ? color("bad") : d === 20 ? color("warn") : color("line");
+    ctx.setLineDash(d === 20 || d === 60 ? [4, 4] : []);
+    ctx.beginPath(); ctx.moveTo(L, y(d)); ctx.lineTo(W - R, y(d)); ctx.stroke();
+    ctx.fillStyle = color("muted"); ctx.fillText(d + "°", L - 6, y(d) + 4);
+  }
+  ctx.setLineDash([]);
+  const line = (key, c, w, dash) => {
+    ctx.strokeStyle = c; ctx.lineWidth = w; ctx.setLineDash(dash || []); ctx.beginPath();
+    let on = false;
+    for (const f of frames) { const v = f[key]; if (v == null) { on = false; continue; } const px = x(f.t), py = y(key === "twist" ? Math.abs(v) : v); on ? ctx.lineTo(px, py) : ctx.moveTo(px, py); on = true; }
+    ctx.stroke(); ctx.setLineDash([]);
+  };
+  line("twist", color("muted"), 1.5, [5, 4]);
+  ctx.strokeStyle = color("cam"); ctx.lineWidth = 2.5; ctx.beginPath();
+  let camOn = false;
+  for (const c of cam) { if (c.trunk == null) { camOn = false; continue; } camOn ? ctx.lineTo(x(c.t), y(c.trunk)) : ctx.moveTo(x(c.t), y(c.trunk)); camOn = true; }
+  ctx.stroke();
+  line("flex", color("accent"), 2.5);
+  for (const a of alerts) { if (now - a.t > WINDOW_MS) continue; ctx.fillStyle = color("bad"); ctx.beginPath(); ctx.arc(x(a.t), T + 8, 5, 0, Math.PI * 2); ctx.fill(); }
+  ctx.textAlign = "left"; ctx.fillStyle = color("muted");
+  ctx.fillText("-20s", L, H - 4); ctx.textAlign = "right"; ctx.fillText("now", W - R, H - 4);
+  requestAnimationFrame(draw);
+}
+requestAnimationFrame(draw);
+
+// ---- wiring ----
+const es = new EventSource("/events");
+es.onopen = () => { $("pConn").textContent = "Hub: connected"; $("pConn").className = "pill good"; };
+es.onerror = () => { $("pConn").textContent = "Hub: disconnected"; $("pConn").className = "pill bad"; };
+es.onmessage = (e) => { try { onMessage(JSON.parse(e.data)); } catch (err) { console.warn(err); } };
+
+$("btnCopy").onclick = async () => {
+  const l = lifts.find((x) => x.id === selected);
+  const text = JSON.stringify({ event_type: "lift", sensor: "single IMU, upper back, total tilt", ...l, start: undefined, end: undefined }, null, 2);
+  try { await navigator.clipboard.writeText(text); $("btnCopy").textContent = "Copied"; } catch { $("raw").textContent = text; $("btnCopy").textContent = "Shown below"; }
+  setTimeout(() => ($("btnCopy").textContent = "Copy selected lift for Care-ER"), 1500);
+};
+$("btnClear").onclick = () => { lifts.length = 0; alerts.length = 0; spans.length = 0; selected = null; renderLifts(); };
+</script>
+</body>
+</html>
