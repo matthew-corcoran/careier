@@ -102,14 +102,16 @@ sup a { text-decoration: none; color: var(--muted); font: 0.68em var(--mono); }
 .hero { position: relative; padding: clamp(36px, 6vw, 70px) 16px clamp(40px, 6vw, 72px); display: flex; flex-direction: column; align-items: center; text-align: center; gap: 22px; }
 .hero .aside { display: flex; align-items: center; gap: 10px; }
 .hero .aside::before, .hero .aside::after { content: ""; width: 18px; height: 1px; background: var(--muted); }
-.wordmark { position: relative; display: grid; place-items: center; width: 100%; }
-.wordmark h1 { font-size: clamp(4.6rem, 19vw, 15.5rem); font-weight: 500; letter-spacing: -0.065em; line-height: 0.9; color: var(--ink); }
+/* The figure stands behind the word: head and shoulders rise above it, every letter stays readable. */
+.wordmark { position: relative; display: grid; place-items: end center; width: 100%; padding-top: clamp(150px, 24vw, 330px); isolation: isolate; }
+.wordmark h1 { position: relative; z-index: 1; font-size: clamp(4.6rem, 19vw, 15.5rem); font-weight: 500; letter-spacing: -0.065em; line-height: 0.9; color: var(--ink); text-shadow: 0 0 0.04em var(--canvas), 0 0 0.12em color-mix(in srgb, var(--canvas) 70%, transparent); }
+.wordmark .figure { position: absolute; z-index: 0; left: 50%; bottom: -2%; height: 104%; -webkit-mask-image: linear-gradient(to bottom, #000 72%, transparent 98%); mask-image: linear-gradient(to bottom, #000 72%, transparent 98%); width: auto; max-width: none; transform: translateX(-50%); pointer-events: none; }
 .wordmark h1 .gap { display: inline-block; width: 0.06em; }
 .pod { position: absolute; width: clamp(110px, 17vw, 210px); aspect-ratio: 4 / 5; border-radius: clamp(20px, 3vw, 34px); overflow: hidden; box-shadow: 0 30px 60px -20px rgba(10, 20, 60, .45), 0 0 0 1px var(--line); background: #dfe3ea; animation: float 6s ease-in-out infinite; }
 .pod img { width: 100%; height: 100%; object-fit: cover; object-position: 50% 28%; display: block; }
 .pod::after { content: ""; position: absolute; inset: auto 0 0 0; height: 40%; background: linear-gradient(transparent, rgba(47,107,255,.18)); }
 @keyframes float { 50% { transform: translateY(-8px); } }
-.hero .lead { text-align: center; margin: 0 auto; max-width: 38ch; color: var(--ink-2); }
+.hero .lead { position: relative; z-index: 1; text-align: center; margin: 0 auto; max-width: 38ch; color: var(--ink-2); }
 .chain { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px; font-size: 0.8rem; }
 .chain span { padding: 6px 12px; border-radius: 99px; background: var(--card); border: 1px solid var(--line); color: var(--ink-2); }
 .chain span.on { background: var(--ink); color: var(--canvas); border-color: var(--ink); }
@@ -306,10 +308,9 @@ html { scroll-padding-top: 12px; }
       <span class="aside">Now sensing</span>
       <div class="wordmark">
         <h1 aria-label="careier">care<span class="gap"></span>ier</h1>
-        <div class="pod"><img src="img/garment.jpg" alt="The Careier sensor vest on a mannequin, with a small motion pod on the chest" width="1280" height="1600"></div>
+        <img class="figure" src="img/vest-cutout.png" alt="The Careier sensor vest on a mannequin, with a small motion pod on the chest" width="800" height="1000">
       </div>
       <p class="lead">A vest that protects carers' backs on every lift, and turns care work into the data care robots will learn from.</p>
-      <div class="chain" aria-label="Roadmap"><span class="on">Data collection</span><span>Assistive tech</span><span>Autonomous care robots</span></div>
     </div>
   </section>
 
