@@ -113,7 +113,7 @@ The hub receives the wearable sensor (UDP port 5005) and the camera coach, logs 
 node hub/hub.mjs
 ```
 
-Open http://localhost:8090. It shows sensor tilt and camera trunk angle on one chart, beeps, lift scores, the camera's REBA and the patient's head alignment.
+Open http://localhost:8090. It shows the coach's annotated camera view, the carer's REBA score (with trunk, neck, legs and arm parts), the patient's neck status, the vest sensor's tilt, both trunk angles on one chart, beeps and a score per lift.
 
 The sensor sends to this laptop's IP (`ipconfig getifaddr en0`) on port 5005. To test without hardware:
 

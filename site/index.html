@@ -279,6 +279,9 @@ pre { margin: 0; overflow-x: auto; font: 0.76rem/1.6 var(--mono); color: var(--i
 .gallery img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
 @media (max-width: 860px) { .gallery { grid-template-columns: 1fr 1fr; } .gallery figure:last-child { grid-column: span 2; } }
 .lab { margin-top: 0; }
+html { scroll-padding-top: 12px; }
+.live-frame { display: block; width: 100%; aspect-ratio: 16 / 10.5; border: 0; border-radius: 22px; background: var(--ground); box-shadow: var(--shadow); }
+@media (max-width: 1000px) { .live-frame { aspect-ratio: auto; height: 1750px; } }
 .device { margin-top: 0; }
 .live-pill { border: 0; cursor: pointer; font: 500 0.75rem var(--sans); padding: 5px 12px; }
 .live-pill.on { background: var(--good-soft); color: var(--good); }
@@ -292,9 +295,10 @@ pre { margin: 0; overflow-x: auto; font: 0.76rem/1.6 var(--mono); color: var(--i
     <nav class="nav" aria-label="Sections">
       <a class="logo" href="#top">careier<span>.</span></a>
       <ul>
-        <li><a href="#watch">Watch</a></li>
-        <li><a href="#try">Try it</a></li>
-        <li><a href="#dashboard">Dashboard</a></li>
+        <li><a href="#vest">Vest</a></li>
+        <li><a href="#watch">Live demo</a></li>
+        <li><a href="#how">How it works</a></li>
+        <li><a href="#roadmap">Roadmap</a></li>
       </ul>
       <a class="pillbtn dark" href="#watch">Watch the demo</a>
     </nav>
@@ -309,12 +313,47 @@ pre { margin: 0; overflow-x: auto; font: 0.76rem/1.6 var(--mono); color: var(--i
     </div>
   </section>
 
+  <section class="panel" id="problem">
+    <div class="inner">
+      <div class="problem">
+        <div class="stack">
+          <span class="kicker">The problem</span>
+          <h2>Carers lift people all shift. Nobody measures how.</h2>
+        </div>
+        <p class="lead">Manual handling is the leading cause of injury in health and social care, and back injuries drive the absences and turnover care homes can't afford.</p>
+      </div>
+      <div class="stats">
+        <div class="glass stat"><b class="dots">1.6m</b><span>care posts in England</span></div>
+        <div class="glass stat"><b class="dots">111k</b><span>posts left vacant</span></div>
+        <div class="glass stat"><b class="dots">28%</b><span>of staff leave each year</span></div>
+        <div class="glass stat"><b class="dots">0</b><span>datasets of real care transfers</span></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="panel split" id="vest" aria-label="The vest">
+    <div class="media"><img src="img/transfer.jpg" alt="A carer wearing the sensor vest under scrubs helps an older man sit on the edge of his bed" width="1600" height="900" loading="lazy"></div>
+    <div class="copy">
+      <span class="kicker">Meet Careier</span>
+      <p class="big">A vest under the uniform that watches the back. Bend wrong and it beeps. Every lift becomes data.</p>
+      <div class="chain"><span>Motion pod at 100 Hz</span><span>Beeps over 60°</span><span>No cameras on the floor</span></div>
+    </div>
+  </section>
+
+  <section class="panel" aria-label="Vest renders">
+    <div class="inner">
+      <div class="gallery">
+        <figure><img src="img/garment.jpg" alt="Sensor vest, three-quarter view" width="1280" height="1600" loading="lazy"></figure>
+        <figure><img src="img/sensor.jpg" alt="Sensor vest from the front, with chest pod and side straps" width="1280" height="1600" loading="lazy"></figure>
+        <figure><img src="img/bedside.jpg" alt="Two carers wearing sensor vests help an older woman sit up in bed" width="1600" height="1200" loading="lazy"></figure>
+      </div>
+    </div>
+  </section>
+
   <section class="panel" id="watch">
     <div class="inner">
-      <div class="sec-head"><h2>Watch it work</h2><span class="aside">Box, bad lift, good lift</span></div>
-      <div class="video">
-        <video src="media/demo.mp4#t=0.5" controls playsinline preload="metadata" aria-label="Careier camera coach demo: a box lift, a person lifted with the head dropping, then a person lifted with the head supported"></video>
-      </div>
+      <div class="sec-head"><h2>Watch it work</h2><span class="aside" id="liveNote">Replay of the camera coach and vest</span></div>
+      <iframe class="live-frame" id="liveFrame" title="Careier live dashboard: camera coach, carer REBA score, patient head check and vest sensor" src="live.html#replay" loading="lazy"></iframe>
     </div>
   </section>
 
@@ -349,9 +388,22 @@ pre { margin: 0; overflow-x: auto; font: 0.76rem/1.6 var(--mono); color: var(--i
     </div>
   </section>
 
+  <section class="panel" id="how">
+    <div class="inner">
+      <div class="sec-head"><h2>How it works</h2><span class="aside">From the bedside to the manager's screen</span></div>
+      <figure class="story" style="margin:0 0 12px"><img src="img/workflow.jpg" alt="Six-panel storyboard: carers prepare, lift together while the vest senses posture, the transfer is logged, then a manager reviews the overview, explores sessions and identifies trends" width="1600" height="900" loading="lazy"></figure>
+      <div class="pipeline" style="margin-top:0">
+        <div class="card"><span class="step-n">01 · Sense</span><h3>Vest + camera</h3><p class="small muted">Trunk tilt from the vest. REBA and the patient's neck from the camera coach.</p></div>
+        <div class="card"><span class="step-n">02 · Segment</span><h3>Every lift</h3><p class="small muted">Each transfer is cut out of the shift with its full motion window.</p></div>
+        <div class="card core"><span class="step-n" style="color:inherit;opacity:.6">03 · Reason</span><h3>Care-ER</h3><p class="small muted">Labels goal, phases and the risky moment, the way Gemini 4 Argon labels robot data.</p></div>
+        <div class="card"><span class="step-n">04 · Act</span><h3>Recommend</h3><p class="small muted">Today, actions for managers. Next, exoskeletons. Later, care robots.</p></div>
+      </div>
+    </div>
+  </section>
+
   <section class="panel" id="dashboard">
     <div class="inner">
-      <div class="sec-head"><h2>The care home dashboard</h2><span class="aside">Sample data</span></div>
+      <div class="sec-head"><h2>For care home managers</h2><span class="aside">A week of sample data</span></div>
       <div class="device">
         <div class="screen">
           <div class="side" role="tablist" aria-label="Dashboard view">
@@ -415,12 +467,13 @@ pre { margin: 0; overflow-x: auto; font: 0.76rem/1.6 var(--mono); color: var(--i
     </div>
   </section>
 
-  <section class="panel">
+  <section class="panel" id="roadmap">
     <div class="inner">
-      <div class="gallery">
-        <figure><img src="img/garment.jpg" alt="Sensor vest, three-quarter view" width="1280" height="1600" loading="lazy"></figure>
-        <figure><img src="img/sensor.jpg" alt="Sensor vest from the front, with chest pod and side straps" width="1280" height="1600" loading="lazy"></figure>
-        <figure><img src="img/bedside.jpg" alt="Two carers wearing sensor vests help an older woman sit up in bed" width="1600" height="1200" loading="lazy"></figure>
+      <div class="sec-head"><h2>Data collection, then assistive tech, then care robots</h2><span class="aside">Each stage funds the next</span></div>
+      <div class="road" style="margin-top:0">
+        <article class="card phase"><span class="orb" style="background:var(--accent)"></span><div class="rowhead"><h3>Data collection</h3><span class="tag">Now</span></div><p class="small muted">The vest coaches carers and shows managers which transfers to change.</p></article>
+        <article class="card phase"><span class="orb" style="background:var(--warn)"></span><div class="rowhead"><h3>Assistive tech</h3><span class="tag ghost">Next</span></div><p class="small muted">Exoskeletons that know a lift is coming before it happens.</p></article>
+        <article class="card phase"><span class="orb" style="background:var(--good)"></span><div class="rowhead"><h3>Care robots</h3><span class="tag ghost">Later</span></div><p class="small muted">Robots trained on thousands of real, consented care transfers.</p></article>
       </div>
     </div>
   </section>
@@ -537,6 +590,29 @@ pre { margin: 0; overflow-x: auto; font: 0.76rem/1.6 var(--mono); color: var(--i
   $("flex").addEventListener("input", (e) => { state.flex = +e.target.value; updateLab(); });
   for (const id of ["knees", "twist"]) $(id).addEventListener("click", (e) => { state[id] = !state[id]; e.currentTarget.setAttribute("aria-pressed", state[id]); updateLab(); });
   updateLab();
+
+  // Served by the hub: show the real live dashboard instead of the replay.
+  if (location.pathname.startsWith("/site")) {
+    $("liveFrame").src = "/";
+    $("liveNote").textContent = "Live from the vest and the camera coach";
+  }
+
+
+  // ---------- presenting ----------
+  // Arrow keys, Page Up/Down and space step through the sections, so the page works as the deck.
+  const slides = [...document.querySelectorAll(".page > section, .page > footer")];
+  document.addEventListener("keydown", (e) => {
+    if (e.target.closest("input, textarea, button, iframe, video") || e.metaKey || e.ctrlKey || e.altKey) return;
+    const next = ["ArrowDown", "ArrowRight", "PageDown", " "].includes(e.key);
+    const prev = ["ArrowUp", "ArrowLeft", "PageUp"].includes(e.key);
+    if (!next && !prev) return;
+    e.preventDefault();
+    const y = window.scrollY + 20;
+    const i = slides.findIndex((el) => el.offsetTop > y);
+    const cur = i === -1 ? slides.length - 1 : i - 1;
+    const to = slides[Math.max(0, Math.min(slides.length - 1, next ? cur + 1 : cur - 1))];
+    to.scrollIntoView({ behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" });
+  });
 
   // ---------- live mode ----------
   // When this page is served by the Careier hub (node hub/hub.mjs → /site/), the posture demo follows

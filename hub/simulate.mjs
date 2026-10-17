@@ -15,7 +15,9 @@ const sendCam = (tilt) => sock.send(JSON.stringify({
   type: "camera", source: "camera", seq: camSeq++, t_ms: Date.now(), mode: "human", people: 2,
   carer_trunk_deg: +(tilt - 4 + Math.random() * 3).toFixed(1),
   reba: tilt > 60 ? 10 : tilt > 20 ? 6 : 3, reba_band: tilt > 60 ? "HIGH" : tilt > 20 ? "MEDIUM" : "LOW",
+  reba_peak: headDrop ? 10 : 6, reba_parts: { Trunk: tilt > 60 ? 4 : tilt > 20 ? 3 : 2, Neck: 1, Legs: tilt > 60 ? 1 : 2, Arm: 2 },
   patient_neck_deg: headDrop ? 64 : 14, patient_neck_status: headDrop ? "danger" : "safe", patient_head_ok: !headDrop,
+  status: headDrop ? "Head drop" : "Head up", detail: headDrop ? "A box cannot fail this" : "Neck stayed with the torso",
 }), PORT, HOST);
 
 async function phase(ms, fn) {
