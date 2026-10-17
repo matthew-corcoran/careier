@@ -84,6 +84,18 @@ python coach.py --demo --record demo.mp4
 python reba.py
 ```
 
+## Send angles to the Careier hub
+
+`coach.py` sends the carer's trunk angle, REBA score and the patient's neck angle over UDP to the laptop hub (default `127.0.0.1:5005`), so the capture screen shows the camera next to the wearable sensor.
+
+```bash
+python coach.py --iphone                       # sends to the hub on this laptop
+python coach.py --iphone --hub 10.217.1.155:5005  # hub on another laptop
+python coach.py --iphone --no-hub              # don't send
+```
+
+If no hub is running, packets are dropped and the coach works as before.
+
 ## Pitch (20 seconds)
 
 A box going up is success. A person going up with a 60-degree neck bend is failure. We measure both the carer's injury risk and the patient's neck alignment. This trial uses a third-person camera; the product uses a sensor suit and first-person video.
