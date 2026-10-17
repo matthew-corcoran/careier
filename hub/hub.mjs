@@ -72,8 +72,9 @@ const siteDir = join(dir, "..", "site");
 const TYPES = { ".html": "text/html; charset=utf-8", ".jpg": "image/jpeg", ".png": "image/png", ".mp4": "video/mp4", ".css": "text/css", ".js": "text/javascript" };
 async function serveSite(req, res) {
   let rel = decodeURIComponent(new URL(req.url, "http://x").pathname.slice("/site/".length)) || "index.html";
-  const file = normalize(join(siteDir, rel));
-  if (!file.startsWith(siteDir)) { res.writeHead(403); return res.end(); }
+  // The site embeds the dashboard as live.html; it is the same file as the capture screen.
+  const file = rel === "live.html" ? join(dir, "capture.html") : normalize(join(siteDir, rel));
+  if (!file.startsWith(siteDir) && rel !== "live.html") { res.writeHead(403); return res.end(); }
   let size;
   try { size = (await stat(file)).size; } catch { res.writeHead(404); return res.end(); }
   const type = TYPES[extname(file)] || "application/octet-stream";
