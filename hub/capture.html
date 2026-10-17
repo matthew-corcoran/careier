@@ -457,10 +457,68 @@ function draw() {
 requestAnimationFrame(draw);
 
 // ---------- wiring ----------
-const es = new EventSource("/events");
-es.onopen = () => { $("cHub").className = "chip on"; };
-es.onerror = () => { $("cHub").className = "chip off"; };
-es.onmessage = (e) => { try { onMessage(JSON.parse(e.data)); } catch (err) { console.warn(err); } };
+const REPLAY = location.hash === "#replay" || new URLSearchParams(location.search).has("replay");
+if (REPLAY) startReplay();
+else {
+  const es = new EventSource("/events");
+  es.onopen = () => { $("cHub").className = "chip on"; };
+  es.onerror = () => { $("cHub").className = "chip off"; };
+  es.onmessage = (e) => { try { onMessage(JSON.parse(e.data)); } catch (err) { console.warn(err); } };
+}
+
+// Replay: for the published site, which can't reach a laptop. Plays the coach's demo clip
+// (box, then a head-drop lift, then a supported lift) and generates matching vest and camera data.
+function startReplay() {
+  $("cHub").textContent = "Replay";
+  $("cHub").className = "chip warn";
+  const vid = document.createElement("video");
+  Object.assign(vid, { src: "media/demo.mp4", muted: true, loop: true, playsInline: true, autoplay: true });
+  vid.setAttribute("aria-label", "Recorded camera coach demo");
+  vid.style.cssText = "width:100%;height:100%;object-fit:contain;display:block";
+  $("camEmpty").hidden = true;
+  $("cam").prepend(vid);
+  vid.play().catch(() => {});
+  const t0 = performance.now();
+  const clock = () => (vid.readyState >= 2 && vid.duration ? vid.currentTime : ((performance.now() - t0) / 1000) % 21);
+  // one lift per take: [start s, end s, peak tilt, peak twist]
+  const takes = [
+    { from: 0, to: 6.5, lift: [1.5, 5.0, 40, 6], cam: { mode: "box", reba: 5, band: "MEDIUM", neck: null, ns: null, ok: null, status: "Box lift", detail: "No neck to protect", people: 1 } },
+    { from: 6.5, to: 13.5, lift: [7.5, 12.2, 72, 28], cam: { mode: "human", reba: 13, band: "VERY HIGH", neck: 64, ns: "danger", ok: false, status: "Head drop", detail: "A box cannot fail this", people: 2 } },
+    { from: 13.5, to: 21, lift: [14.5, 19.6, 38, 6], cam: { mode: "human", reba: 5, band: "MEDIUM", neck: 14, ns: "safe", ok: true, status: "Head up", detail: "Neck stayed with the torso", people: 2 } },
+  ];
+  let lastT = 0, lifting = false, liftStart = 0, beeped = false, twisted = false, peak = 1, n = 0;
+  setInterval(() => {
+    const t = clock();
+    if (t < lastT) { peak = 1; lifting = false; }
+    lastT = t;
+    const take = takes.find((k) => t >= k.from && t < k.to) || takes[0];
+    const [a, b, top, tw] = take.lift;
+    const p = t >= a && t <= b ? (t - a) / (b - a) : -1;
+    const tilt = p < 0 ? 4 + Math.random() * 2 : 8 + (top - 8) * Math.sin(Math.PI * p);
+    const twist = p < 0 ? 0 : tw * Math.max(0, Math.sin(Math.PI * (p - 0.35) / 0.5));
+    const now = Date.now();
+    onMessage({ type: "frame", trunk_flexion: +tilt.toFixed(1), twist: +twist.toFixed(1), calibrated: true, hub_ms: now });
+    if (!lifting && tilt > 22) { lifting = true; liftStart = now; beeped = twisted = false; onMessage({ type: "lift_start", hub_ms: now }); }
+    if (lifting && tilt > 60 && !beeped) { beeped = true; onMessage({ type: "alert", kind: "round_back", hub_ms: now }); }
+    if (lifting && twist > 20 && !twisted) { twisted = true; onMessage({ type: "alert", kind: "twist", hub_ms: now }); }
+    if (lifting && tilt < 12) { lifting = false; onMessage({ type: "lift_end", duration_ms: now - liftStart, score: null, hub_ms: now }); }
+    if (n++ % 3 === 0) {
+      const c = take.cam;
+      // The clip's own score card holds one REBA score and patient status per take.
+      const reba = c.reba;
+      peak = Math.max(peak, reba);
+      onMessage({
+        type: "camera", source: "camera", hub_ms: now, mode: c.mode, people: c.people,
+        carer_trunk_deg: +(tilt - 3 + Math.random() * 3).toFixed(1),
+        reba, reba_band: c.band, reba_peak: peak,
+        reba_parts: { Trunk: tilt > 60 ? 4 : tilt > 20 ? 3 : 2, Neck: c.ok === false ? 2 : 1, Legs: tilt > 60 ? 1 : 2, Arm: 2 },
+        patient_neck_deg: c.neck, patient_neck_status: c.ns, patient_head_ok: c.ok,
+        status: c.status, detail: c.detail,
+      });
+    }
+  }, 20);
+  setInterval(() => onStats({ lastAt: Date.now(), cameraAt: Date.now(), dropped: 0, status: { rssi: -58 } }), 1000);
+}
 
 $("btnCopy").onclick = async () => {
   const l = lifts.find((x) => x.id === selected);

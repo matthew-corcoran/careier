@@ -279,6 +279,8 @@ pre { margin: 0; overflow-x: auto; font: 0.76rem/1.6 var(--mono); color: var(--i
 .gallery img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
 @media (max-width: 860px) { .gallery { grid-template-columns: 1fr 1fr; } .gallery figure:last-child { grid-column: span 2; } }
 .lab { margin-top: 0; }
+.live-frame { display: block; width: 100%; aspect-ratio: 16 / 10.5; border: 0; border-radius: 22px; background: var(--ground); box-shadow: var(--shadow); }
+@media (max-width: 1000px) { .live-frame { aspect-ratio: auto; height: 1750px; } }
 .device { margin-top: 0; }
 .live-pill { border: 0; cursor: pointer; font: 500 0.75rem var(--sans); padding: 5px 12px; }
 .live-pill.on { background: var(--good-soft); color: var(--good); }
@@ -311,10 +313,8 @@ pre { margin: 0; overflow-x: auto; font: 0.76rem/1.6 var(--mono); color: var(--i
 
   <section class="panel" id="watch">
     <div class="inner">
-      <div class="sec-head"><h2>Watch it work</h2><span class="aside">Box, bad lift, good lift</span></div>
-      <div class="video">
-        <video src="media/demo.mp4#t=0.5" controls playsinline preload="metadata" aria-label="Careier camera coach demo: a box lift, a person lifted with the head dropping, then a person lifted with the head supported"></video>
-      </div>
+      <div class="sec-head"><h2>Watch it work</h2><span class="aside" id="liveNote">Replay of the camera coach and vest</span></div>
+      <iframe class="live-frame" id="liveFrame" title="Careier live dashboard: camera coach, carer REBA score, patient head check and vest sensor" src="live.html#replay" loading="lazy"></iframe>
     </div>
   </section>
 
@@ -537,6 +537,12 @@ pre { margin: 0; overflow-x: auto; font: 0.76rem/1.6 var(--mono); color: var(--i
   $("flex").addEventListener("input", (e) => { state.flex = +e.target.value; updateLab(); });
   for (const id of ["knees", "twist"]) $(id).addEventListener("click", (e) => { state[id] = !state[id]; e.currentTarget.setAttribute("aria-pressed", state[id]); updateLab(); });
   updateLab();
+
+  // Served by the hub: show the real live dashboard instead of the replay.
+  if (location.pathname.startsWith("/site")) {
+    $("liveFrame").src = "/";
+    $("liveNote").textContent = "Live from the vest and the camera coach";
+  }
 
   // ---------- live mode ----------
   // When this page is served by the Careier hub (node hub/hub.mjs → /site/), the posture demo follows
